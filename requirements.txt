@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+asyncpg
+SQLAlchemy
+pydantic[email]
+httpx
+python-jose[cryptography]
+apscheduler
+structlog
+fastapi-limiter
+psycopg2-binary
