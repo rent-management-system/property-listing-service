@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 from app.dependencies.database import get_db
 from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus

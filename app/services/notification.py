@@ -13,7 +13,7 @@ async def send_notification(user_id: str, message: str):
 def get_approval_message(language: str, title: str, location: str) -> str:
     messages = {
         "am": f'"{title}" የተሰኘው በአ/አ {location} የሚገኘው ዝርዝርዎ ጸድቋል።',
-        "om": f'Galmeen keessan kan "{title}" jedhamu kan Finfinnee {location} jiru mirkanaa'eera.',
+        "om": f'Galmeen keessan kan "{title}" jedhamu kan Finfinnee {location} jiru mirkanaa\'eera.',
         "en": f'Your listing "{title}" located in Addis Ababa, {location} has been approved.'
     }
     return messages.get(language, messages["en"])
