@@ -2,8 +2,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'property_status') THEN
-        CREATE TYPE property_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'propertystatus') THEN
+        CREATE TYPE propertystatus AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
     END IF;
 END$$;
 
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS properties (
     price NUMERIC(10, 2) NOT NULL,
     amenities JSONB DEFAULT '[]'::jsonb,
     photos JSONB DEFAULT '[]'::jsonb,
-    status property_status NOT NULL DEFAULT 'PENDING',
+    status propertystatus NOT NULL DEFAULT 'PENDING',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     fts tsvector
