@@ -29,7 +29,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
 
 async def get_current_owner(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "Owner":
+    if current_user.get("role").lower() != "owner":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="The user is not an Owner"
