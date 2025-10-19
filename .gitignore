@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+Bate
 # C extensions
 *.so
 .env.example
