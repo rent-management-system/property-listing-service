@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS properties (
     photos JSONB DEFAULT '[]'::jsonb,
     status property_status NOT NULL DEFAULT 'PENDING',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fts tsvector
 );
 
 -- Create a function to update the updated_at timestamp
@@ -46,17 +47,17 @@ CREATE INDEX IF NOT EXISTS idx_properties_location ON properties (location);
 CREATE INDEX IF NOT EXISTS idx_properties_price ON properties (price);
 
 -- Full-text search index
-ALTER TABLE properties ADD COLUMN fts tsvector;
-CREATE INDEX fts_idx ON properties USING gin(fts);
+CREATE INDEX IF NOT EXISTS fts_idx ON properties USING gin(fts);
 
-CREATE OR REPLACE FUNCTION update_fts_column() RETURNS trigger AS $
+CREATE OR REPLACE FUNCTION update_fts_column() RETURNS trigger AS $$
 BEGIN
   NEW.fts := to_tsvector('english', NEW.title || ' ' || NEW.description);
   RETURN NEW;
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS update_fts ON properties;
+
 CREATE TRIGGER update_fts
 BEFORE INSERT OR UPDATE ON properties
 FOR EACH ROW EXECUTE PROCEDURE update_fts_column();

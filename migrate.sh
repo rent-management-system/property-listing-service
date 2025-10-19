@@ -11,8 +11,14 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
+# Create a psql-compatible URL by removing the '+asyncpg' driver specifier
+PSQL_URL=${DATABASE_URL/+asyncpg/}
+
 # Run the schema and seed SQL files
-psql $DATABASE_URL -f sql/schema.sql
-psql $DATABASE_URL -f sql/seed.sql
+echo "Running schema setup..."
+psql "$PSQL_URL" -f sql/schema.sql
+
+echo "Running database seeding..."
+psql "$PSQL_URL" -f sql/seed.sql
 
 echo "Database migration and seeding completed."
