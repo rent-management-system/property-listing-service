@@ -44,3 +44,19 @@ CREATE INDEX IF NOT EXISTS idx_properties_user_id ON properties (user_id);
 CREATE INDEX IF NOT EXISTS idx_properties_status ON properties (status);
 CREATE INDEX IF NOT EXISTS idx_properties_location ON properties (location);
 CREATE INDEX IF NOT EXISTS idx_properties_price ON properties (price);
+
+-- Full-text search index
+ALTER TABLE properties ADD COLUMN fts tsvector;
+CREATE INDEX fts_idx ON properties USING gin(fts);
+
+CREATE OR REPLACE FUNCTION update_fts_column() RETURNS trigger AS $
+BEGIN
+  NEW.fts := to_tsvector('english', NEW.title || ' ' || NEW.description);
+  RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_fts ON properties;
+CREATE TRIGGER update_fts
+BEFORE INSERT OR UPDATE ON properties
+FOR EACH ROW EXECUTE PROCEDURE update_fts_column();

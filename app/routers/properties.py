@@ -14,7 +14,7 @@ from uuid import UUID
 from typing import List, Optional
 from decimal import Decimal
 
-from sqlalchemy import func, text
+from sqlalchemy import func, text, select
 
 logger = structlog.get_logger(__name__)
 
@@ -101,18 +101,24 @@ async def get_all_properties(
     location: Optional[str] = None,
     min_price: Optional[Decimal] = None,
     max_price: Optional[Decimal] = None,
-    amenities: Optional[List[str]] = Query(None)
+    amenities: Optional[List[str]] = Query(None),
+    search: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 20
 ):
-    query = db.query(Property).filter(Property.status == PropertyStatus.APPROVED)
+    query = select(Property).where(Property.status == PropertyStatus.APPROVED)
 
+    if search:
+        query = query.where(text("to_tsvector('english', title || ' ' || description) @@ to_tsquery('english', :search_query)").bindparams(search_query=search))
     if location:
-        query = query.filter(Property.location.ilike(f"%{location}%"))
+        query = query.where(Property.location.ilike(f"%{location}%"))
     if min_price:
-        query = query.filter(Property.price >= min_price)
+        query = query.where(Property.price >= min_price)
     if max_price:
-        query = query.filter(Property.price <= max_price)
+        query = query.where(Property.price <= max_price)
     if amenities:
-        query = query.filter(Property.amenities.contains(amenities))
+        query = query.where(Property.amenities.contains(amenities))
 
+    query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
