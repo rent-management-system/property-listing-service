@@ -1,0 +1,46 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'property_status') THEN
+        CREATE TYPE property_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+    END IF;
+END$$;
+
+CREATE TABLE IF NOT EXISTS properties (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    amenities JSONB DEFAULT '[]'::jsonb,
+    photos JSONB DEFAULT '[]'::jsonb,
+    status property_status NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create a function to update the updated_at timestamp
+CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Drop the trigger if it exists to avoid errors on re-run
+DROP TRIGGER IF EXISTS set_timestamp ON properties;
+
+-- Create the trigger
+CREATE TRIGGER set_timestamp
+BEFORE UPDATE ON properties
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_set_timestamp();
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_properties_user_id ON properties (user_id);
+CREATE INDEX IF NOT EXISTS idx_properties_status ON properties (status);
+CREATE INDEX IF NOT EXISTS idx_properties_location ON properties (location);
+CREATE INDEX IF NOT EXISTS idx_properties_price ON properties (price);
