@@ -11,7 +11,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8004/api/v1/auth
 async def get_user_data(token: str):
     async with httpx.AsyncClient() as client:
         headers = {"Authorization": f"Bearer {token}"}
-        response = await client.post(f"{settings.USER_MANAGEMENT_URL}/auth/verify", headers=headers)
+        response = await client.get(f"{settings.USER_MANAGEMENT_URL}/auth/verify", headers=headers)
         response.raise_for_status() # Will raise an exception for 4xx/5xx responses
         return response.json()
 
