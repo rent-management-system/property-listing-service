@@ -68,3 +68,28 @@ def test_get_all_properties_public(client: TestClient):
     assert response.status_code == 200
     # The response should be a list, even if it's empty
     assert isinstance(response.json(), list)
+
+def test_get_metrics(client: TestClient):
+    """Tests the metrics endpoint."""
+    response = client.get("/api/v1/properties/metrics")
+    assert response.status_code == 200
+    data = response.json()
+    assert "total_listings" in data
+    assert "pending" in data
+    assert "approved" in data
+    assert "rejected" in data
+
+def test_full_text_search(client: TestClient):
+    """Tests the full-text search functionality."""
+    # This test assumes some data has been seeded
+    response = client.get("/api/v1/properties?search=apartment")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+def test_pagination(client: TestClient):
+    """Tests the pagination functionality."""
+    response = client.get("/api/v1/properties?offset=0&limit=5")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) <= 5
