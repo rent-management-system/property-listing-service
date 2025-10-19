@@ -10,10 +10,10 @@ async def send_notification(user_id: str, message: str):
         payload = {"user_id": user_id, "message": message}
         await client.post(f"{settings.NOTIFICATION_URL}/send", json=payload)
 
-def get_approval_message(language: str) -> str:
+def get_approval_message(language: str, title: str, location: str) -> str:
     messages = {
-        "am": "ዝርዝር ጸድቋል",
-        "om": "Galmeen keessan mirkanaa'eera",
-        "en": "Your listing has been approved."
+        "am": f'"{title}" የተሰኘው በአ/አ {location} የሚገኘው ዝርዝርዎ ጸድቋል።',
+        "om": f'Galmeen keessan kan "{title}" jedhamu kan Finfinnee {location} jiru mirkanaa'eera.',
+        "en": f'Your listing "{title}" located in Addis Ababa, {location} has been approved.'
     }
     return messages.get(language, messages["en"])
