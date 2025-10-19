@@ -48,6 +48,7 @@ async def approve_property(
     # In a real app, you'd verify approval_data.payment_id with the payment service
     prop = await db.get(Property, id)
     if not prop:
+        logger.error("approval_failed", property_id=str(id), reason="Property not found")
         raise HTTPException(status_code=404, detail="Property not found")
 
     prop.status = PropertyStatus.APPROVED
@@ -55,7 +56,7 @@ async def approve_property(
 
     # Send notification
     # In a real app, you'd get the user's language from the user service
-    message = get_approval_message("am") # Mocking Amharic
+    message = get_approval_message("am", title=prop.title, location=prop.location) # Mocking Amharic
     await send_notification(str(prop.user_id), message)
 
     return {"status": "success"}
