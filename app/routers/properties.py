@@ -14,7 +14,25 @@ from uuid import UUID
 from typing import List, Optional
 from decimal import Decimal
 
+from sqlalchemy import func, text
+
+logger = structlog.get_logger(__name__)
+
 router = APIRouter()
+
+@router.get("/metrics")
+async def get_metrics(db: AsyncSession = Depends(get_db)):
+    logger.info("metrics_accessed", endpoint="metrics", service="property")
+    total_listings = await db.scalar(select(func.count(Property.id)))
+    pending = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.PENDING))
+    approved = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.APPROVED))
+    rejected = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.REJECTED))
+    return {
+        "total_listings": total_listings,
+        "pending": pending,
+        "approved": approved,
+        "rejected": rejected
+    }
 
 @router.post("/submit", status_code=status.HTTP_201_CREATED, response_model=PropertySubmitResponse)
 async def submit_property(
