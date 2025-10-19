@@ -214,4 +214,14 @@ This microservice handles property listings for a Rental Management System. It's
     curl http://127.0.0.1:8000/api/v1/properties?location=CMC
     ```
 
+### Demo Error Simulation
+
+A script is provided to demonstrate how the API handles various error conditions. Before running, you must edit `tests/demo_scenarios.py` and replace the placeholder JWTs with valid tokens from your User Management service.
+
+```bash
+python tests/demo_scenarios.py
+```
+
+This will output the API responses for scenarios like using an invalid JWT, a user without the correct role, and attempting to approve a non-existent property.
+
 ```
