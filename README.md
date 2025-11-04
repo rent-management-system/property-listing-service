@@ -25,6 +25,14 @@ For detailed information about all API endpoints, request/response models, and u
 
 ---
 
+## Live API Docs
+
+The API is deployed and accessible. The interactive documentation (Swagger UI) can be found at:
+
+[https://property-listing-service.onrender.com/docs](https://property-listing-service.onrender.com/docs)
+
+---
+
 ## Getting Started
 
 Follow these instructions to set up and run the project on your local machine.
