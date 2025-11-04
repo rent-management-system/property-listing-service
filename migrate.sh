@@ -1,24 +1,41 @@
 #!/bin/bash
+set -e
 
-# Load environment variables from .env file
+# Load environment variables safely
 if [ -f .env ]; then
-  export $(cat .env | sed 's/#.*//g' | xargs)
+    set -a
+    source .env
+    set +a
 fi
 
-# Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
-  echo "Error: DATABASE_URL is not set. Please check your .env file."
-  exit 1
+    echo "Error: DATABASE_URL is not set in .env file."
+    exit 1
 fi
 
-# Create a psql-compatible URL by removing the '+asyncpg' driver specifier
-PSQL_URL=${DATABASE_URL/+asyncpg/}
+# Parse DATABASE_URL using regex
+DB_URL_REGEX="postgresql\+asyncpg://([^:]+):([^@]+)@([^:]+):([0-9]+)/(.+)"
+if [[ $DATABASE_URL =~ $DB_URL_REGEX ]]; then
+    DB_USER="${BASH_REMATCH[1]}"
+    DB_PASSWORD="${BASH_REMATCH[2]}"
+    DB_HOST="${BASH_REMATCH[3]}"
+    DB_PORT="${BASH_REMATCH[4]}"
+    DB_NAME="${BASH_REMATCH[5]}"
+else
+    echo "Error: DATABASE_URL format is invalid."
+    exit 1
+fi
 
-# Run the schema and seed SQL files
-echo "Running schema setup..."
-psql "$PSQL_URL" -f sql/schema.sql
+export PGPASSWORD=$DB_PASSWORD
 
-echo "Running database seeding..."
-psql "$PSQL_URL" -f sql/seed.sql
+echo "Applying schema.sql..."
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f sql/schema.sql
 
-echo "Database migration and seeding completed."
+if [ -f sql/seed.sql ]; then
+    echo "Applying seed.sql..."
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f sql/seed.sql
+else
+    echo "sql/seed.sql not found, skipping."
+fi
+
+echo "Database migration complete."

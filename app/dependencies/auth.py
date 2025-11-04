@@ -5,7 +5,7 @@ import httpx
 from app.config import settings
 from app.utils.retry import async_retry
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8004/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="https://rent-managment-system-user-magt.onrender.com/api/v1/auth/login")
 
 @async_retry()
 async def get_user_data(token: str):
