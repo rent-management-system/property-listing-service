@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     PAYMENT_PROCESSING_URL: str
     NOTIFICATION_URL: str
     JWT_SECRET: str
+    REDIS_URL: str
 
     class Config:
         env_file = ".env"

@@ -16,7 +16,7 @@ app = FastAPI(title="Property Listing Microservice")
 async def startup():
     # In a real production environment, you would use a persistent Redis instance.
     # For this example, we use an in-memory store which is not suitable for production.
-    redis_connection = redis.from_url("redis://localhost", encoding="utf-8", decode_responses=True)
+    redis_connection = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
     await FastAPILimiter.init(redis_connection)
 
 @app.middleware("http")
