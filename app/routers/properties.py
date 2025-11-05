@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
+import shutil
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 from app.dependencies.database import get_db
@@ -123,3 +124,28 @@ async def get_all_properties(
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.post("/{id}/upload-image", response_model=PropertyResponse)
+async def upload_image(
+    id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_owner)
+):
+    prop = await db.get(Property, id)
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    if str(prop.user_id) != current_user['user_id']:
+        raise HTTPException(status_code=403, detail="Not authorized to upload images to this property")
+
+    file_path = f"uploads/{file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    prop.photos.append(file_path)
+    await db.commit()
+    await db.refresh(prop)
+
+    return prop

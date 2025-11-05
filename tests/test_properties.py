@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 import pytest
+import io
 
 # A mock JWT for a user with the 'Owner' role
 OWNER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwicm9sZSI6Ik93bmVyIiwiaWF0IjoxNTE2MjM5MDIyfQ.f4o8_b-hK_TzNxlABf_Y9h6hI5_BfBvNcg_l-gK_b-A"
@@ -93,3 +94,36 @@ def test_pagination(client: TestClient):
     data = response.json()
     assert isinstance(data, list)
     assert len(data) <= 5
+
+def test_upload_image_success(client: TestClient, mock_auth):
+    """Tests successful image upload for a property."""
+    headers = {"Authorization": f"Bearer {OWNER_TOKEN}"}
+    property_data = {
+        "title": "Image Test Property",
+        "description": "A property for image upload testing.",
+        "location": "Image Test Location",
+        "price": 2000.00,
+        "amenities": [],
+        "photos": []
+    }
+
+    # First, create a property to upload an image to
+    response = client.post("/api/v1/properties/submit", json=property_data, headers=headers)
+    assert response.status_code == 201
+    property_id = response.json()["property_id"]
+
+    # Now, upload an image to the created property
+    image_content = b"fake image data"
+    image = io.BytesIO(image_content)
+    image.name = "test_image.jpg"
+
+    response = client.post(
+        f"/api/v1/properties/{property_id}/upload-image",
+        files={"file": (image.name, image, "image/jpeg")},
+        headers=headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "photos" in data
+    assert f"uploads/{image.name}" in data["photos"]
