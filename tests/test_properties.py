@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 import pytest
 import io
+import uuid
 
 # A mock JWT for a user with the 'Owner' role
 OWNER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwicm9sZSI6Ik93bmVyIiwiaWF0IjoxNTE2MjM5MDIyfQ.f4o8_b-hK_TzNxlABf_Y9h6hI5_BfBvNcg_l-gK_b-A"
@@ -11,13 +12,17 @@ USER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwic
 
 @pytest.fixture
 def mock_auth():
-    with patch('app.dependencies.auth.get_user_data') as mock_get_user:
+    with patch('app.dependencies.auth.get_user_data') as mock_get_user, \
+         patch('app.dependencies.auth.jwt.decode') as mock_jwt_decode:
         mock_get_user.return_value = {
-            'user_id': 'a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6',
+            'user_id': uuid.UUID('a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6'),
             'role': 'Owner',
             'preferred_language': 'en'
         }
-        yield mock_get_user
+        mock_jwt_decode.return_value = {
+            'sub': 'a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6'
+        }
+        yield mock_get_user, mock_jwt_decode
 
 def test_submit_property_success(client: TestClient, mock_auth):
     """Tests successful property submission by an Owner."""
@@ -26,12 +31,19 @@ def test_submit_property_success(client: TestClient, mock_auth):
         "title": "Test Property",
         "description": "A property for testing.",
         "location": "Test Location",
-        "price": 1000.00,
+        "price": "1000.00",
         "amenities": ["Test Amenity"],
-        "photos": ["test.jpg"]
     }
+    image_content = b"fake image data"
+    image = io.BytesIO(image_content)
+    image.name = "test_image.jpg"
 
-    response = client.post("/api/v1/properties/submit", json=property_data, headers=headers)
+    response = client.post(
+        "/api/v1/properties/submit", 
+        data=property_data, 
+        files={"file": (image.name, image, "image/jpeg")},
+        headers=headers
+    )
 
     assert response.status_code == 201
     data = response.json()
@@ -39,28 +51,34 @@ def test_submit_property_success(client: TestClient, mock_auth):
     assert "property_id" in data
     assert "payment_url" in data
 
-def test_submit_property_not_owner(client: TestClient):
+def test_submit_property_not_owner(client: TestClient, mock_auth):
     """Tests that a non-owner cannot submit a property."""
-    # This mock simulates the user service returning a 'User' role
-    with patch('app.dependencies.auth.get_user_data') as mock_get_user:
-        mock_get_user.return_value = {
-            'user_id': 'some_user_id',
-            'role': 'User' # Not an owner
-        }
-        headers = {"Authorization": f"Bearer {USER_TOKEN}"}
-        property_data = {
-            "title": "Test Property",
-            "description": "A property for testing.",
-            "location": "Test Location",
-            "price": 1000.00,
-            "amenities": [],
-            "photos": []
-        }
+    mock_get_user, _ = mock_auth
+    mock_get_user.return_value = {
+        'user_id': 'some_user_id',
+        'role': 'User' # Not an owner
+    }
+    headers = {"Authorization": f"Bearer {USER_TOKEN}"}
+    property_data = {
+        "title": "Test Property",
+        "description": "A property for testing.",
+        "location": "Test Location",
+        "price": "1000.00",
+        "amenities": [],
+    }
+    image_content = b"fake image data"
+    image = io.BytesIO(image_content)
+    image.name = "test_image.jpg"
 
-        response = client.post("/api/v1/properties/submit", json=property_data, headers=headers)
+    response = client.post(
+        "/api/v1/properties/submit", 
+        data=property_data, 
+        files={"file": (image.name, image, "image/jpeg")},
+        headers=headers
+    )
 
-        assert response.status_code == 403
-        assert response.json()["detail"] == "The user is not an Owner"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "The user is not an Owner"
 
 def test_get_all_properties_public(client: TestClient):
     """Tests that the public endpoint for approved properties is accessible."""
@@ -94,36 +112,3 @@ def test_pagination(client: TestClient):
     data = response.json()
     assert isinstance(data, list)
     assert len(data) <= 5
-
-def test_upload_image_success(client: TestClient, mock_auth):
-    """Tests successful image upload for a property."""
-    headers = {"Authorization": f"Bearer {OWNER_TOKEN}"}
-    property_data = {
-        "title": "Image Test Property",
-        "description": "A property for image upload testing.",
-        "location": "Image Test Location",
-        "price": 2000.00,
-        "amenities": [],
-        "photos": []
-    }
-
-    # First, create a property to upload an image to
-    response = client.post("/api/v1/properties/submit", json=property_data, headers=headers)
-    assert response.status_code == 201
-    property_id = response.json()["property_id"]
-
-    # Now, upload an image to the created property
-    image_content = b"fake image data"
-    image = io.BytesIO(image_content)
-    image.name = "test_image.jpg"
-
-    response = client.post(
-        f"/api/v1/properties/{property_id}/upload-image",
-        files={"file": (image.name, image, "image/jpeg")},
-        headers=headers
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert "photos" in data
-    assert f"uploads/{image.name}" in data["photos"]

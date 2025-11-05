@@ -87,7 +87,8 @@ chmod +x migrate.sh
 Use `uvicorn` to start the development server.
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+
+
 ```
 
 The API will now be running at `http://127.0.0.1:8000`.

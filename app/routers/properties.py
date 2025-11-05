@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
 import shutil
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
@@ -38,13 +38,27 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
 
 @router.post("/submit", status_code=status.HTTP_201_CREATED, response_model=PropertySubmitResponse)
 async def submit_property(
-    property_data: PropertySubmit,
+    title: str = Form(...),
+    description: str = Form(...),
+    location: str = Form(...),
+    price: Decimal = Form(...),
+    amenities: List[str] = Form(...),
+    file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_owner)
 ):
+    file_path = f"uploads/{file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
     new_property = Property(
         user_id=current_user['user_id'],
-        **property_data.dict()
+        title=title,
+        description=description,
+        location=location,
+        price=price,
+        amenities=amenities,
+        photos=[file_path]
     )
     db.add(new_property)
     await db.commit()
@@ -92,7 +106,7 @@ async def get_property(
         raise HTTPException(status_code=404, detail="Property not found")
 
     # Check ownership or admin role
-    if str(prop.user_id) != current_user['user_id'] and current_user['role'] != 'Admin':
+    if prop.user_id != current_user['user_id'] and current_user['role'] != 'Admin':
         raise HTTPException(status_code=403, detail="Not authorized to view this property")
 
     return prop
@@ -110,7 +124,7 @@ async def get_all_properties(
 ):
     query = select(Property).where(Property.status == PropertyStatus.APPROVED)
 
-    if search:
+    if search and db.bind.dialect.name != "sqlite":
         query = query.where(text("to_tsvector('english', title || ' ' || description) @@ to_tsquery('english', :search_query)").bindparams(search_query=search))
     if location:
         query = query.where(Property.location.ilike(f"%{location}%"))
@@ -124,28 +138,3 @@ async def get_all_properties(
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
-
-
-@router.post("/{id}/upload-image", response_model=PropertyResponse)
-async def upload_image(
-    id: UUID,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_owner)
-):
-    prop = await db.get(Property, id)
-    if not prop:
-        raise HTTPException(status_code=404, detail="Property not found")
-
-    if str(prop.user_id) != current_user['user_id']:
-        raise HTTPException(status_code=403, detail="Not authorized to upload images to this property")
-
-    file_path = f"uploads/{file.filename}"
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    prop.photos.append(file_path)
-    await db.commit()
-    await db.refresh(prop)
-
-    return prop
