@@ -8,7 +8,6 @@ class PropertySubmit(BaseModel):
     location: str
     price: Decimal
     amenities: List[str]
-    photos: List[str]
 
 class PropertyResponse(BaseModel):
     id: UUID4
