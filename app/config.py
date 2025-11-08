@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     NOTIFICATION_URL: str
     JWT_SECRET: str
     REDIS_URL: str
+    CORS_ORIGINS: str = "*" # New line for CORS origins
 
     class Config:
         env_file = ".env"
