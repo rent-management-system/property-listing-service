@@ -14,7 +14,8 @@ logger = structlog.get_logger(__name__)
 app = FastAPI(title="Property Listing Microservice")
 
 # CORS Middleware
-origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
+# origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
