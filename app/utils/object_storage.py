@@ -21,17 +21,16 @@ async def upload_file_to_object_storage(file: UploadFile) -> str:
         contents = await file.read()
 
         # Upload to Supabase Storage
+        # The upload method typically returns a dictionary with 'path' on success
+        # or raises an exception on failure.
         response = supabase.storage.from_(settings.BUCKET_NAME).upload(unique_filename, contents, {"content-type": file.content_type})
         
-        # Check if upload was successful
-        if response.get("statusCode") == 200 or response.get("Key"): # Supabase client might return different structures
-            # Get the public URL
-            public_url_response = supabase.storage.from_(settings.BUCKET_NAME).get_public_url(unique_filename)
-            return public_url_response
-        else:
-            # Handle upload error
-            print(f"Supabase upload error: {response}")
-            raise Exception("Failed to upload file to Supabase Storage")
+        # If no exception was raised, assume success and get the public URL
+        # The response object itself might not be directly useful for checking success
+        # beyond not raising an exception.
+        
+        public_url_response = supabase.storage.from_(settings.BUCKET_NAME).get_public_url(unique_filename)
+        return public_url_response
 
     except Exception as e:
         print(f"Error uploading file to Supabase: {e}")
