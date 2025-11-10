@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
-import shutil
+# import shutil # Removed shutil
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 from app.dependencies.database import get_db
@@ -17,6 +17,7 @@ from typing import List, Optional
 from decimal import Decimal
 
 from sqlalchemy import func, text, select
+from app.utils.object_storage import upload_file_to_object_storage # Added import
 
 logger = structlog.get_logger(__name__)
 
@@ -47,9 +48,13 @@ async def submit_property(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_owner)
 ):
-    file_path = f"uploads/{file.filename}"
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Remove local file saving logic
+    # file_path = f"uploads/{file.filename}"
+    # with open(file_path, "wb") as buffer:
+    #     shutil.copyfileobj(file.file, buffer)
+
+    # Upload to Supabase and get URL
+    image_url = await upload_file_to_object_storage(file)
 
     new_property = Property(
         user_id=current_user['user_id'],
@@ -58,7 +63,7 @@ async def submit_property(
         location=location,
         price=price,
         amenities=amenities,
-        photos=[file_path]
+        photos=[image_url] # Store the URL
     )
     db.add(new_property)
     await db.commit()

@@ -10,3 +10,6 @@ structlog
 fastapi-limiter
 psycopg2-binary
 pydantic-settings
+python-multipart
+Pillow 
+supabase

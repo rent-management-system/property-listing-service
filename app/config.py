@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     REDIS_URL: str
     CORS_ORIGINS: str = "*" # New line for CORS origins
 
+    SUPABASE_URL: str
+    SUPABASE_SERVICE_KEY: str
+    BUCKET_NAME: str
+
     class Config:
         env_file = ".env"
 
