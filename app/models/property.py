@@ -1,6 +1,6 @@
 import enum
 from sqlalchemy import (Column, String, Text, Numeric, JSON, Enum, 
-                        create_engine, MetaData)
+                        create_engine, MetaData, Float) # Added Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
@@ -21,6 +21,9 @@ class Property(Base):
     description = Column(Text, nullable=False)
     location = Column(String(255), nullable=False)
     price = Column(Numeric(10, 2), nullable=False)
+    house_type = Column(String(50), nullable=False, default='private home') # Changed to house_type
     amenities = Column(JSON, default=[])
     photos = Column(JSON, default=[])
     status = Column(Enum(PropertyStatus), nullable=False, default=PropertyStatus.PENDING)
+    lat = Column(Float, nullable=True) # Added lat
+    lon = Column(Float, nullable=True) # Added lon

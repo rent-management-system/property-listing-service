@@ -7,8 +7,9 @@ from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, PropertyApprove, 
-    PropertyResponse, PropertyPublicResponse
+    PropertyResponse, PropertyPublicResponse, HouseType # Changed PropertyType to HouseType
 )
+from app.services.gebeta import geocode_location_with_fallback # Added Gebeta import
 from app.services.notification import send_notification, get_approval_message
 import httpx
 from app.config import settings
@@ -43,18 +44,19 @@ async def submit_property(
     description: str = Form(...),
     location: str = Form(...),
     price: Decimal = Form(...),
+    house_type: HouseType = Form(...), # Changed type to house_type and made required
     amenities: List[str] = Form(...),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_owner)
 ):
-    # Remove local file saving logic
-    # file_path = f"uploads/{file.filename}"
-    # with open(file_path, "wb") as buffer:
-    #     shutil.copyfileobj(file.file, buffer)
-
     # Upload to Supabase and get URL
     image_url = await upload_file_to_object_storage(file)
+
+    # Geocode location
+    geocoded_data = await geocode_location_with_fallback(location)
+    lat = geocoded_data["lat"]
+    lon = geocoded_data["lon"]
 
     new_property = Property(
         user_id=current_user['user_id'],
@@ -62,8 +64,11 @@ async def submit_property(
         description=description,
         location=location,
         price=price,
+        house_type=house_type, # Changed type to house_type
         amenities=amenities,
-        photos=[image_url] # Store the URL
+        photos=[image_url], # Store the URL
+        lat=lat, # Added lat
+        lon=lon # Added lon
     )
     db.add(new_property)
     await db.commit()

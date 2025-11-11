@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_SERVICE_KEY: str
     BUCKET_NAME: str
+    GEBETA_API_KEY: str # Added Gebeta API Key
+    MAX_FILE_MB: int = 5 # Added Max File MB with a default
 
     class Config:
         env_file = ".env"

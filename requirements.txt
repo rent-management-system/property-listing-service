@@ -13,3 +13,4 @@ pydantic-settings
 python-multipart
 Pillow 
 supabase
+alembic
