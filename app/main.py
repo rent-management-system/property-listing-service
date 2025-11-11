@@ -4,7 +4,7 @@ from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
 import redis.asyncio as redis
 from app.core.logging import configure_logging
-from app.routers import properties
+from app.routers import properties, payments
 from app.config import settings
 import structlog
 
@@ -49,6 +49,12 @@ app.include_router(
     prefix="/api/v1/properties", 
     tags=["Properties"],
     dependencies=[Depends(RateLimiter(times=10, minutes=1))]
+)
+
+app.include_router(
+    payments.router,
+    prefix="/api/v1",
+    tags=["Payments"]
 )
 
 @app.get("/health")

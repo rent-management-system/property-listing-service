@@ -35,10 +35,13 @@ class PropertyResponse(BaseModel):
 class PropertySubmitResponse(BaseModel):
     property_id: UUID4
     status: str
-    payment_url: str
-
-class PropertyApprove(BaseModel):
     payment_id: UUID4
+
+
+class PaymentConfirmation(BaseModel):
+    property_id: UUID4
+    payment_id: UUID4
+    status: str
 
 class PropertyPublicResponse(BaseModel):
     id: UUID4

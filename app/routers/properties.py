@@ -6,19 +6,17 @@ from app.dependencies.database import get_db
 from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus
 from app.schemas.property import (
-    PropertySubmit, PropertySubmitResponse, PropertyApprove, 
-    PropertyResponse, PropertyPublicResponse, HouseType # Changed PropertyType to HouseType
+    PropertySubmit, PropertySubmitResponse, 
+    PropertyResponse, PropertyPublicResponse, HouseType
 )
-from app.services.gebeta import geocode_location_with_fallback # Added Gebeta import
-from app.services.notification import send_notification, get_approval_message
-import httpx
-from app.config import settings
+from app.services.gebeta import geocode_location_with_fallback
+from app.services.payment_service import initiate_payment
 from uuid import UUID
 from typing import List, Optional
 from decimal import Decimal
 
 from sqlalchemy import func, text, select
-from app.utils.object_storage import upload_file_to_object_storage # Added import
+from app.utils.object_storage import upload_file_to_object_storage
 
 logger = structlog.get_logger(__name__)
 
@@ -44,19 +42,14 @@ async def submit_property(
     description: str = Form(...),
     location: str = Form(...),
     price: Decimal = Form(...),
-    house_type: HouseType = Form(...), # Changed type to house_type and made required
+    house_type: HouseType = Form(...),
     amenities: List[str] = Form(...),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_owner)
 ):
-    # Upload to Supabase and get URL
     image_url = await upload_file_to_object_storage(file)
-
-    # Geocode location
     geocoded_data = await geocode_location_with_fallback(location)
-    lat = geocoded_data["lat"]
-    lon = geocoded_data["lon"]
 
     new_property = Property(
         user_id=current_user['user_id'],
@@ -64,46 +57,44 @@ async def submit_property(
         description=description,
         location=location,
         price=price,
-        house_type=house_type, # Changed type to house_type
+        house_type=house_type,
         amenities=amenities,
-        photos=[image_url], # Store the URL
-        lat=lat, # Added lat
-        lon=lon # Added lon
+        photos=[image_url],
+        lat=geocoded_data["lat"],
+        lon=geocoded_data["lon"]
     )
     db.add(new_property)
     await db.commit()
     await db.refresh(new_property)
 
-    # Mock payment initiation
-    payment_url = f"{settings.PAYMENT_PROCESSING_URL}/payments/initiate/{new_property.id}"
+    try:
+        # Initiate payment with the payment service
+        payment_id = await initiate_payment(
+            property_id=new_property.id,
+            user_id=current_user['user_id'],
+            amount=new_property.price
+        )
+        
+        # Store the payment_id and commit
+        new_property.payment_id = payment_id
+        await db.commit()
+        await db.refresh(new_property)
+
+    except Exception as e:
+        # If payment initiation fails, roll back property creation by deleting it.
+        logger.error("Failed to initiate payment, rolling back property creation", property_id=str(new_property.id), error=str(e))
+        await db.delete(new_property)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payment service is currently unavailable. Please try again later.",
+        )
 
     return {
         "property_id": new_property.id,
         "status": new_property.status.value,
-        "payment_url": payment_url
+        "payment_id": new_property.payment_id
     }
-
-@router.post("/{id}/approve", status_code=status.HTTP_200_OK)
-async def approve_property(
-    id: UUID,
-    approval_data: PropertyApprove,
-    db: AsyncSession = Depends(get_db)
-):
-    # In a real app, you'd verify approval_data.payment_id with the payment service
-    prop = await db.get(Property, id)
-    if not prop:
-        logger.error("approval_failed", property_id=str(id), reason="Property not found")
-        raise HTTPException(status_code=404, detail="Property not found")
-
-    prop.status = PropertyStatus.APPROVED
-    await db.commit()
-
-    # Send notification
-    # In a real app, you'd get the user's language from the user service
-    message = get_approval_message("am", title=prop.title, location=prop.location) # Mocking Amharic
-    await send_notification(str(prop.user_id), message)
-
-    return {"status": "success"}
 
 @router.get("/{id}", response_model=PropertyResponse)
 async def get_property(

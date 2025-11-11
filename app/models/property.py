@@ -17,6 +17,7 @@ class Property(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False)
+    payment_id = Column(UUID(as_uuid=True), nullable=True, unique=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     location = Column(String(255), nullable=False)
