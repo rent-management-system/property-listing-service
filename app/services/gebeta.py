@@ -16,7 +16,7 @@ redis_client = redis.Redis(
     password=redis_url.password
 )
 
-GEBETA_GEOCODE_URL = "https://gebeta.app/api/v1/geocode"
+GEBETA_GEOCODE_URL = "https://api.gebeta.app/geocode"
 CACHE_TTL = 3600 # 1 hour
 
 async def get_geocoded_location(location_query: str):
