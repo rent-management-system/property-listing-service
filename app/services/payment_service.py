@@ -6,11 +6,11 @@ from app.config import settings
 
 logger = structlog.get_logger(__name__)
 
-async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal) -> UUID:
+async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, access_token: str) -> tuple[UUID, UUID]:
     """
     Sends a request to the Payment Processing Service to initiate a payment.
     """
-    initiate_url = f"{settings.PAYMENT_SERVICE_URL}/payments/initiate"
+    initiate_url = f"{settings.PAYMENT_SERVICE_URL}/api/v1/payments/initiate"
     request_id = UUID(uuid4()) # Generate a new UUID for request_id
     payload = {
         "request_id": str(request_id),
@@ -19,7 +19,7 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal) ->
         "amount": float(amount)
     }
     headers = {
-        "X-API-Key": settings.PAYMENT_SERVICE_API_KEY
+        "Authorization": f"Bearer {access_token}"
     }
 
     logger.info("Initiating payment for property", property_id=str(property_id))
@@ -37,7 +37,7 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal) ->
                 property_id=str(property_id),
                 payment_id=str(payment_id)
             )
-            return payment_id
+            return request_id, payment_id
         except httpx.HTTPStatusError as e:
             logger.error(
                 "HTTP error occurred while initiating payment",

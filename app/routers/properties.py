@@ -69,10 +69,11 @@ async def submit_property(
 
     try:
         # Initiate payment with the payment service
-        payment_id = await initiate_payment(
+        request_id, payment_id = await initiate_payment(
             property_id=new_property.id,
             user_id=current_user['user_id'],
-            amount=new_property.price
+            amount=new_property.price,
+            access_token=current_user['access_token']
         )
         
         # Store the payment_id and commit
