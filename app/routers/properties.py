@@ -53,6 +53,7 @@ async def submit_property(
     image_url = await upload_file_to_object_storage(file)
     geocoded_data = await geocode_location_with_fallback(location)
 
+    logger.info("User ID type and value", user_id_type=type(current_user['user_id']), user_id_value=current_user['user_id'])
     new_property = Property(
         user_id=current_user['user_id'],
         title=title,
