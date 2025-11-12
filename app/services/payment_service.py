@@ -10,7 +10,7 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
     """
     Sends a request to the Payment Processing Service to initiate a payment.
     """
-    initiate_url = f"{settings.PAYMENT_SERVICE_URL}/api/v1/payments/initiate"
+    initiate_url = f"{settings.PAYMENT_SERVICE_URL}/payments/initiate"
     request_id = UUID(uuid4()) # Generate a new UUID for request_id
     payload = {
         "request_id": str(request_id),
