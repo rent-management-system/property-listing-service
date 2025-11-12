@@ -19,7 +19,7 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
         "amount": float(amount)
     }
     headers = {
-        "Authorization": f"Bearer {access_token}"
+        "Authorization": f"Bearer {str(access_token)}"
     }
 
     logger.info("Initiating payment for property", property_id=str(property_id))
