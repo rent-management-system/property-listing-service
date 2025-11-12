@@ -46,8 +46,10 @@ async def submit_property(
     amenities: List[str] = Form(...),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_owner)
+    current_owner_data: dict = Depends(get_current_owner)
 ):
+    current_user = current_owner_data["user"]
+    access_token = current_owner_data["token"]
     image_url = await upload_file_to_object_storage(file)
     geocoded_data = await geocode_location_with_fallback(location)
 
@@ -73,7 +75,7 @@ async def submit_property(
             property_id=new_property.id,
             user_id=current_user['user_id'],
             amount=new_property.price,
-            access_token=current_user['access_token']
+            access_token=access_token
         )
         
         # Store the payment_id and commit
