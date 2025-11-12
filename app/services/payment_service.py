@@ -11,7 +11,7 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
     Sends a request to the Payment Processing Service to initiate a payment.
     """
     initiate_url = f"{settings.PAYMENT_SERVICE_URL}/payments/initiate"
-    request_id = UUID(uuid4()) # Generate a new UUID for request_id
+    request_id = uuid4()
     payload = {
         "request_id": str(request_id),
         "property_id": str(property_id),
@@ -22,7 +22,21 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
         "Authorization": f"Bearer {str(access_token)}"
     }
 
-    logger.info("Initiating payment for property", property_id=str(property_id))
+    logger.info(
+        "Initiating payment for property - debug info",
+        property_id_type=str(type(property_id)),
+        user_id_type=str(type(user_id)),
+        amount_type=str(type(amount)),
+        access_token_type=str(type(access_token)),
+        payload_request_id_type=str(type(payload["request_id"])),
+        payload_property_id_type=str(type(payload["property_id"])),
+        payload_user_id_type=str(type(payload["user_id"])),
+        payload_amount_type=str(type(payload["amount"])),
+        header_auth_type=str(type(headers["Authorization"])),
+        initiate_url=initiate_url,
+        payload=payload,
+        headers=headers
+    )
 
     async with httpx.AsyncClient() as client:
         try:
