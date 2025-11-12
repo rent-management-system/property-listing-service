@@ -71,7 +71,7 @@ async def submit_property(
 
     try:
         # Initiate payment with the payment service
-        request_id, payment_id = await initiate_payment(
+        request_id, payment_id, chapa_tx_ref = await initiate_payment(
             property_id=new_property.id,
             user_id=current_user['user_id'],
             amount=new_property.price,
@@ -96,7 +96,8 @@ async def submit_property(
     return {
         "property_id": new_property.id,
         "status": new_property.status.value,
-        "payment_id": new_property.payment_id
+        "payment_id": new_property.payment_id,
+        "chapa_tx_ref": chapa_tx_ref
     }
 
 @router.get("/{id}", response_model=PropertyResponse)

@@ -6,7 +6,7 @@ from app.config import settings
 
 logger = structlog.get_logger(__name__)
 
-async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, access_token: str) -> tuple[UUID, UUID]:
+async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, access_token: str) -> tuple[UUID, Optional[UUID], Optional[str]]:
     """
     Sends a request to the Payment Processing Service to initiate a payment.
     """
@@ -44,7 +44,8 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
             response.raise_for_status()  # Raise an exception for 4xx/5xx responses
             
             response_data = response.json()
-            payment_id = response_data.get("payment_id")
+            payment_id = response_data.get("id") # Changed from "payment_id" to "id"
+            chapa_tx_ref = response_data.get("chapa_tx_ref")
             
             if payment_id is None:
                 logger.warning(
@@ -56,9 +57,10 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
                 # If payment_id is not returned, we can proceed without it for now,
                 # assuming a background process or webhook will update it later.
                 # For now, we'll return None for payment_id.
-                return request_id, None
+                return request_id, None, chapa_tx_ref
             
             payment_id = UUID(payment_id)
+            return request_id, payment_id, chapa_tx_ref
         except httpx.HTTPStatusError as e:
             logger.error(
                 "HTTP error occurred while initiating payment",

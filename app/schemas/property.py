@@ -36,6 +36,7 @@ class PropertySubmitResponse(BaseModel):
     property_id: UUID4
     status: str
     payment_id: Optional[UUID4]
+    chapa_tx_ref: Optional[str]
 
 
 class PaymentConfirmation(BaseModel):
