@@ -2,6 +2,7 @@ import httpx
 import structlog
 from uuid import UUID, uuid4
 from decimal import Decimal
+from typing import Optional # Added this import
 from app.config import settings
 
 logger = structlog.get_logger(__name__)
