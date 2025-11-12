@@ -44,14 +44,21 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
             response.raise_for_status()  # Raise an exception for 4xx/5xx responses
             
             response_data = response.json()
-            payment_id = UUID(response_data["payment_id"])
+            payment_id = response_data.get("payment_id")
             
-            logger.info(
-                "Payment initiated successfully",
-                property_id=str(property_id),
-                payment_id=str(payment_id)
-            )
-            return request_id, payment_id
+            if payment_id is None:
+                logger.warning(
+                    "Payment initiated but payment_id not returned immediately by payment service",
+                    property_id=str(property_id),
+                    response_data=response_data,
+                    status_code=response.status_code
+                )
+                # If payment_id is not returned, we can proceed without it for now,
+                # assuming a background process or webhook will update it later.
+                # For now, we'll return None for payment_id.
+                return request_id, None
+            
+            payment_id = UUID(payment_id)
         except httpx.HTTPStatusError as e:
             logger.error(
                 "HTTP error occurred while initiating payment",

@@ -35,7 +35,7 @@ class PropertyResponse(BaseModel):
 class PropertySubmitResponse(BaseModel):
     property_id: UUID4
     status: str
-    payment_id: UUID4
+    payment_id: Optional[UUID4]
 
 
 class PaymentConfirmation(BaseModel):
