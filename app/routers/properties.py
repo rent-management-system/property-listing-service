@@ -85,7 +85,7 @@ async def submit_property(
 
     except Exception as e:
         # If payment initiation fails, roll back property creation by deleting it.
-        logger.error("Failed to initiate payment, rolling back property creation", property_id=str(new_property.id), error=str(e))
+        logger.error("Failed to initiate payment, rolling back property creation", property_id=str(new_property.id), error_message=str(e))
         await db.delete(new_property)
         await db.commit()
         raise HTTPException(
