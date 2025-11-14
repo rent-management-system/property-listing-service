@@ -7,6 +7,13 @@ class HouseType(str, Enum):
     CONDOMINIUM = "condominium"
     PRIVATE_HOME = "private home"
     APARTMENT = "apartment"
+    STUDIO = "studio"
+    VILLA = "villa"
+    COMMERCIAL = "commercial"
+    OFFICE = "office"
+    HOUSE = "house"
+    GUESTHOUSE = "guesthouse"
+    PENTHOUSE = "penthouse"
 
 class PropertySubmit(BaseModel):
     title: str

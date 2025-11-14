@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+from sqlalchemy import select # Added import
 
 from app.dependencies.database import get_db
 from app.dependencies.security import get_api_key
@@ -23,10 +24,13 @@ async def payment_confirmation_webhook(
     """
     logger.info("Received payment confirmation webhook", payload=payload)
 
-    prop = await db.query(Property).filter(
-        Property.id == payload.property_id,
-        Property.payment_id == payload.payment_id
-    ).first()
+    result = await db.execute(
+        select(Property).filter(
+            Property.id == payload.property_id,
+            Property.payment_id == payload.payment_id
+        )
+    )
+    prop = result.scalar_one_or_none()
 
     if not prop:
         logger.warning(
