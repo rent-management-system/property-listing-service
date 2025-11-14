@@ -24,11 +24,10 @@ async def payment_confirmation_webhook(
     """
     logger.info("Data received from payment processing service", data=payload.model_dump(mode='json'))
     try:
+        # Find the property using only the property_id, as the payment_id from the
+        # confirmation webhook might differ from the one generated during initiation.
         result = await db.execute(
-            select(Property).filter(
-                Property.id == payload.property_id,
-                Property.payment_id == payload.payment_id
-            )
+            select(Property).filter(Property.id == payload.property_id)
         )
         prop = result.scalar_one_or_none()
 
@@ -44,6 +43,11 @@ async def payment_confirmation_webhook(
             )
 
         logger.info("Retrieved property for payment confirmation", property_data=PropertyResponse.from_orm(prop).model_dump(mode='json'))
+        logger.info(
+            "Comparing payment IDs for verification",
+            payload_payment_id=str(payload.payment_id),
+            database_payment_id=str(prop.payment_id)
+        )
 
         if payload.status == "SUCCESS":
             if prop.status == PropertyStatus.APPROVED:
