@@ -5,6 +5,13 @@ from sqlalchemy import pool
 
 from alembic import context
 
+import os
+import sys
+from dotenv import load_dotenv # Added import
+
+# Load environment variables from .env file
+load_dotenv()
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -14,8 +21,6 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-import os
-import sys
 sys.path.insert(0, os.path.abspath("."))
 
 # add your model's MetaData object here
@@ -28,6 +33,14 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+def include_object(object, name, type_, reflected, compare_to):
+    """
+    Filter objects to be included in autogeneration.
+    Only include objects related to the 'properties' table.
+    """
+    if type_ == "table" and name != "properties":
+        return False
+    return True
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -47,6 +60,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object # Added include_object
     )
 
     with context.begin_transaction():
@@ -58,7 +72,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 def do_run_migrations(connection):
     context.configure(
-        connection=connection, target_metadata=target_metadata
+        connection=connection, target_metadata=target_metadata,
+        include_object=include_object # Added include_object
     )
     with context.begin_transaction():
         context.run_migrations()

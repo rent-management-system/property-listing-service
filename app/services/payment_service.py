@@ -4,39 +4,40 @@ from uuid import UUID, uuid4
 from decimal import Decimal
 from typing import Optional # Added this import
 from app.config import settings
+from datetime import datetime # Added datetime
 
 logger = structlog.get_logger(__name__)
 
-async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, access_token: str) -> tuple[UUID, Optional[UUID], Optional[str]]:
+async def initiate_payment(property_id: UUID, user_id: UUID, access_token: str) -> tuple[UUID, Optional[UUID], Optional[str], Optional[str]]:
     """
     Sends a request to the Payment Processing Service to initiate a payment.
+    The amount and currency are fixed from settings.
     """
     initiate_url = f"{settings.PAYMENT_SERVICE_URL}/payments/initiate"
+    
+    # Generate a unique request_id based on property_id and timestamp for idempotency
     request_id = uuid4()
+    
     payload = {
         "request_id": str(request_id),
         "property_id": str(property_id),
         "user_id": str(user_id),
-        "amount": float(amount)
+        "amount": float(settings.PAYMENT_AMOUNT), # Use fixed amount from settings
+        "currency": settings.PAYMENT_CURRENCY, # Use fixed currency from settings
+        "is_test_mode": settings.CHAPA_IS_TEST_MODE # Pass test mode flag
     }
     headers = {
         "Authorization": f"Bearer {str(access_token)}"
     }
 
     logger.info(
-        "Initiating payment for property - debug info",
-        property_id_type=str(type(property_id)),
-        user_id_type=str(type(user_id)),
-        amount_type=str(type(amount)),
-        access_token_type=str(type(access_token)),
-        payload_request_id_type=str(type(payload["request_id"])),
-        payload_property_id_type=str(type(payload["property_id"])),
-        payload_user_id_type=str(type(payload["user_id"])),
-        payload_amount_type=str(type(payload["amount"])),
-        header_auth_type=str(type(headers["Authorization"])),
+        "Initiating payment for property",
+        property_id=str(property_id),
+        user_id=str(user_id),
+        amount=settings.PAYMENT_AMOUNT,
+        currency=settings.PAYMENT_CURRENCY,
+        is_test_mode=settings.CHAPA_IS_TEST_MODE,
         initiate_url=initiate_url,
-        payload=payload,
-        headers=headers
     )
 
     async with httpx.AsyncClient() as client:
@@ -45,8 +46,9 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
             response.raise_for_status()  # Raise an exception for 4xx/5xx responses
             
             response_data = response.json()
-            payment_id = response_data.get("id") # Changed from "payment_id" to "id"
+            payment_id = response_data.get("id")
             chapa_tx_ref = response_data.get("chapa_tx_ref")
+            checkout_url = response_data.get("checkout_url") # Get checkout_url
             
             if payment_id is None:
                 logger.warning(
@@ -55,13 +57,10 @@ async def initiate_payment(property_id: UUID, user_id: UUID, amount: Decimal, ac
                     response_data=response_data,
                     status_code=response.status_code
                 )
-                # If payment_id is not returned, we can proceed without it for now,
-                # assuming a background process or webhook will update it later.
-                # For now, we'll return None for payment_id.
-                return request_id, None, chapa_tx_ref
+                return request_id, None, chapa_tx_ref, checkout_url
             
             payment_id = UUID(payment_id)
-            return request_id, payment_id, chapa_tx_ref
+            return request_id, payment_id, chapa_tx_ref, checkout_url
         except httpx.HTTPStatusError as e:
             logger.error(
                 "HTTP error occurred while initiating payment",

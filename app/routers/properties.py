@@ -4,19 +4,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 from app.dependencies.database import get_db
 from app.dependencies.auth import get_current_owner, get_current_user
-from app.models.property import Property, PropertyStatus
+from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType
+    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum # Added PaymentStatusEnum
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
 from uuid import UUID
 from typing import List, Optional
 from decimal import Decimal
+from datetime import datetime # Added datetime
 
 from sqlalchemy import func, text, select
 from app.utils.object_storage import upload_file_to_object_storage
+from app.config import settings # Added settings
 
 logger = structlog.get_logger(__name__)
 
@@ -63,7 +65,8 @@ async def submit_property(
         amenities=amenities,
         photos=[image_url],
         lat=geocoded_data["lat"],
-        lon=geocoded_data["lon"]
+        lon=geocoded_data["lon"],
+        payment_status=PaymentStatus.PENDING # Set initial payment status
     )
     db.add(new_property)
     await db.commit()
@@ -71,10 +74,9 @@ async def submit_property(
 
     try:
         # Initiate payment with the payment service
-        request_id, payment_id, chapa_tx_ref = await initiate_payment(
+        request_id, payment_id, chapa_tx_ref, checkout_url = await initiate_payment(
             property_id=new_property.id,
             user_id=current_user['user_id'],
-            amount=new_property.price,
             access_token=access_token
         )
         
@@ -97,7 +99,8 @@ async def submit_property(
         "property_id": new_property.id,
         "status": new_property.status.value,
         "payment_id": new_property.payment_id,
-        "chapa_tx_ref": chapa_tx_ref
+        "chapa_tx_ref": chapa_tx_ref,
+        "checkout_url": checkout_url # Return checkout_url
     }
 
 @router.get("/{id}", response_model=PropertyResponse)
@@ -111,7 +114,7 @@ async def get_property(
         raise HTTPException(status_code=404, detail="Property not found")
 
     # Check ownership or admin role
-    if prop.user_id != current_user['user_id'] and current_user['role'] != 'Admin':
+    if str(prop.user_id) != current_user['user_id'] and current_user['role'].lower() != 'admin': # Ensure comparison is correct
         raise HTTPException(status_code=403, detail="Not authorized to view this property")
 
     return prop
@@ -138,7 +141,8 @@ async def get_all_properties(
     if max_price:
         query = query.where(Property.price <= max_price)
     if amenities:
-        query = query.where(Property.amenities.contains(amenities))
+        # Ensure amenities are treated as an array in the query
+        query = query.where(Property.amenities.op('&&')(amenities))
 
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)

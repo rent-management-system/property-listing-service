@@ -1,10 +1,10 @@
 import asyncio
-import logging
+import structlog # Changed from logging to structlog
 from functools import wraps
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__) # Get structlog logger
 
-def async_retry(attempts=3, backoff_factor=0.5):
+def async_retry(attempts=5, backoff_factor=0.5): # Increased attempts to 5
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -13,7 +13,11 @@ def async_retry(attempts=3, backoff_factor=0.5):
                     return await func(*args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Attempt {attempt} failed for {func.__name__}: {e}"
+                        f"Attempt {attempt} failed for {func.__name__}",
+                        attempt=attempt,
+                        function=func.__name__,
+                        error=str(e),
+                        exc_info=True if attempt == attempts else False # Log traceback only on final attempt
                     )
                     if attempt == attempts:
                         raise

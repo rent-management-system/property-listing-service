@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 from sqlalchemy import select # Added import
+from datetime import datetime # Added datetime
 
 from app.dependencies.database import get_db
 from app.dependencies.security import get_api_key
-from app.models.property import Property, PropertyStatus
-from app.schemas.property import PaymentConfirmation, PropertyResponse
+from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
+from app.schemas.property import PaymentConfirmation, PropertyResponse, PaymentStatusEnum # Added PaymentStatusEnum
 from app.services.notification import send_notification, get_approval_message
+from app.config import settings # Added settings
 
 logger = structlog.get_logger(__name__)
 
@@ -21,11 +23,19 @@ async def payment_confirmation_webhook(
 ):
     """
     Webhook to receive payment confirmation from the Payment Processing Service.
+    Ensures idempotency and updates property status.
     """
-    logger.info("Data received from payment processing service", data=payload.model_dump(mode='json'))
+    logger.info("Payment confirmation webhook received", data=payload.model_dump(mode='json'))
+    
+    # Ensure the API key is the one designated for property webhooks
+    if api_key != settings.PROPERTY_WEBHOOK_API_KEY:
+        logger.warning("Unauthorized API Key for payment confirmation webhook", received_key=api_key)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API Key for this endpoint",
+        )
+
     try:
-        # Find the property using only the property_id, as the payment_id from the
-        # confirmation webhook might differ from the one generated during initiation.
         result = await db.execute(
             select(Property).filter(Property.id == payload.property_id)
         )
@@ -39,54 +49,74 @@ async def payment_confirmation_webhook(
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Property or payment ID not found",
+                detail="Property not found",
             )
 
         logger.info("Retrieved property for payment confirmation", property_data=PropertyResponse.from_orm(prop).model_dump(mode='json'))
-        logger.info(
-            "Comparing payment IDs for verification",
-            payload_payment_id=str(payload.payment_id),
-            database_payment_id=str(prop.payment_id)
-        )
+        
+        # Idempotency check: If payment status is already SUCCESS or FAILED, do nothing.
+        if prop.payment_status == PaymentStatus.SUCCESS or prop.payment_status == PaymentStatus.FAILED:
+            logger.info(
+                "Payment already processed for property",
+                property_id=str(prop.id),
+                current_payment_status=prop.payment_status.value,
+            )
+            return {"status": "already_processed"}
 
-        if payload.status == "SUCCESS":
-            if prop.status == PropertyStatus.APPROVED:
-                logger.info("Property already approved", property_id=str(prop.id))
-                return {"status": "already_approved"}
-
-            prop.status = PropertyStatus.APPROVED
-            await db.commit()
-            logger.info("Property approved successfully", property_id=str(prop.id))
+        # Update payment_status based on payload status
+        if payload.status == PaymentStatusEnum.SUCCESS.value:
+            prop.payment_status = PaymentStatus.SUCCESS
+            prop.status = PropertyStatus.APPROVED # Approve the property
+            prop.approval_timestamp = datetime.utcnow() # Set approval timestamp
+            logger.info("Property payment successful and approved", property_id=str(prop.id))
 
             # Send notification to the property owner
             try:
-                message = get_approval_message("en", title=prop.title, location=prop.location)
+                # Fetch user data to get preferred language if needed, or default to English
+                # For now, defaulting to English and using fixed payment details from settings
+                message = get_approval_message(
+                    "en", # Assuming English for now, can be dynamic
+                    title=prop.title,
+                    location=prop.location,
+                    payment_amount=settings.PAYMENT_AMOUNT,
+                    payment_currency=settings.PAYMENT_CURRENCY
+                )
                 await send_notification(str(prop.user_id), message)
                 logger.info("Approval notification sent", user_id=str(prop.user_id))
             except Exception as e:
                 logger.error("Failed to send notification", property_id=str(prop.id), error=str(e), exc_info=True)
 
+        elif payload.status == PaymentStatusEnum.FAILED.value:
+            prop.payment_status = PaymentStatus.FAILED
+            # Optionally, set PropertyStatus to REJECTED or keep PENDING based on business logic
+            # For now, we'll keep it PENDING if payment failed, awaiting user action or timeout
+            logger.warning(
+                "Payment failed for property",
+                property_id=str(prop.id),
+                payment_status=payload.status,
+                tx_ref=payload.tx_ref,
+                error_message=payload.error_message,
+            )
         else:
             logger.warning(
-                "Payment confirmation received with non-success status",
+                "Payment confirmation received with unknown status",
                 property_id=str(prop.id),
                 payment_status=payload.status,
             )
-            # Optionally, handle failed payment (e.g., move property to REJECTED)
-            # For now, we just log it.
+        
+        await db.commit()
+        await db.refresh(prop)
 
-        return {"status": "received"}
+        return {"status": "received", "property_status": prop.status.value, "payment_status": prop.payment_status.value}
     except HTTPException as http_exc:
-        # Re-raise HTTPExceptions to let FastAPI handle them as they are expected exceptions
         raise http_exc
     except Exception as e:
         logger.error(
             "An unexpected error occurred in payment confirmation webhook",
             payload=payload.model_dump(mode='json'),
             error=str(e),
-            exc_info=True  # This adds traceback info to the log
+            exc_info=True,
         )
-        # Return a generic error response to the caller to avoid leaking implementation details
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal error occurred while processing the payment confirmation."

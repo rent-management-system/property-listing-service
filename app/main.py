@@ -7,6 +7,8 @@ from app.core.logging import configure_logging
 from app.routers import properties, payments
 from app.config import settings
 import structlog
+from apscheduler.schedulers.asyncio import AsyncIOScheduler # Added import
+from app.services.property_cleanup import cleanup_stale_pending_properties # Added import
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -25,12 +27,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+scheduler = AsyncIOScheduler() # Initialize scheduler
+
 @app.on_event("startup")
 async def startup():
-    # In a real production environment, you would use a persistent Redis instance.
-    # For this example, we use an in-memory store which is not suitable for production.
+    # Initialize Redis for FastAPILimiter
     redis_connection = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
     await FastAPILimiter.init(redis_connection)
+
+    # Schedule background tasks
+    scheduler.add_job(cleanup_stale_pending_properties, "interval", days=1) # Run daily
+    scheduler.start()
+    logger.info("Scheduler started")
+
+@app.on_event("shutdown")
+async def shutdown():
+    scheduler.shutdown()
+    logger.info("Scheduler shut down")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
