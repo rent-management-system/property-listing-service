@@ -74,5 +74,6 @@ async def initiate_payment(property_id: UUID, user_id: UUID, access_token: str) 
                 "Error initiating payment",
                 property_id=str(property_id),
                 error=str(e),
+                exc_info=True,  # Add full exception info to the log
             )
             raise

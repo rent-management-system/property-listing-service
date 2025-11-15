@@ -45,7 +45,7 @@ class PropertyResponse(BaseModel):
     lon: Optional[float]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class PropertySubmitResponse(BaseModel):
     property_id: UUID4
@@ -76,4 +76,4 @@ class PropertyPublicResponse(BaseModel):
     lon: Optional[float]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
