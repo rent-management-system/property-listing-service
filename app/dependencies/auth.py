@@ -52,8 +52,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except (JWTError, httpx.HTTPStatusError):
         raise credentials_exception
 
-async def get_current_owner(token: str = Depends(oauth2_scheme)):
-    current_user = await get_current_user(token)
+async def get_current_owner(current_user: dict = Depends(get_current_user), token: str = Depends(oauth2_scheme)):
     if current_user.get("role").lower() != "owner":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

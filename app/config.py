@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     CHAPA_IS_TEST_MODE: bool = True # Flag for Chapa sandbox/test mode
     PROPERTY_WEBHOOK_API_KEY: str # API key for incoming webhooks to this service
 
+    chapa_api_key: str
+    chapa_secret_key: str
+    chapa_webhook_secret: str
+    jwt_algorithm: str
+    notification_service_url: str
+    property_listing_service_url: str
+    encryption_key: str
+    frontend_redirect_url: str
+
     class Config:
         env_file = ".env"
 
