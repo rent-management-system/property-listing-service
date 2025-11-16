@@ -39,7 +39,7 @@ class PropertyResponse(BaseModel):
     amenities: List[str]
     photos: List[str]
     status: str
-    payment_status: PaymentStatusEnum # Added payment_status
+    payment_status: Optional[PaymentStatusEnum] = None # Added payment_status
     approval_timestamp: Optional[datetime] # Added approval_timestamp
     lat: Optional[float]
     lon: Optional[float]
@@ -70,10 +70,16 @@ class PropertyPublicResponse(BaseModel):
     house_type: HouseType
     amenities: List[str]
     status: str
-    payment_status: PaymentStatusEnum # Added payment_status
+    payment_status: Optional[PaymentStatusEnum] = None # Added payment_status
     approval_timestamp: Optional[datetime] # Added approval_timestamp
     lat: Optional[float]
     lon: Optional[float]
 
     class Config:
         from_attributes = True
+
+class PropertyUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[Decimal] = None
+    amenities: Optional[List[str]] = None

@@ -13,6 +13,8 @@ class PropertyStatus(enum.Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    RESERVED = "RESERVED"
+    DELETED = "DELETED"
 
 class PaymentStatus(enum.Enum): # New Enum for payment status
     PENDING = "PENDING"

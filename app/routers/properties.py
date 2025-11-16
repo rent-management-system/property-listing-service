@@ -7,7 +7,7 @@ from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum # Added PaymentStatusEnum
+    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate # Added PaymentStatusEnum
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
@@ -16,7 +16,7 @@ from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime # Added datetime
 
-from sqlalchemy import func, text, select
+from sqlalchemy import func, text, select, cast, TEXT
 from app.utils.object_storage import upload_file_to_object_storage
 from app.config import settings # Added settings
 
@@ -103,6 +103,26 @@ async def submit_property(
         "checkout_url": checkout_url # Return checkout_url
     }
 
+@router.get("/my-properties", response_model=List[PropertyResponse])
+async def get_my_properties(
+    db: AsyncSession = Depends(get_db),
+    current_owner_data: dict = Depends(get_current_owner)
+):
+    """
+    Retrieves all properties owned by the currently authenticated user.
+    """
+    current_user_id = UUID(current_owner_data["user"]["user_id"])
+    
+    query = select(Property).where(
+        Property.user_id == current_user_id,
+        cast(Property.status, TEXT) != PropertyStatus.DELETED.value
+    )
+    result = await db.execute(query)
+    properties = result.scalars().all()
+    
+    return properties
+
+
 @router.get("/{id}", response_model=PropertyResponse)
 async def get_property(
     id: UUID, 
@@ -118,6 +138,7 @@ async def get_property(
         raise HTTPException(status_code=403, detail="Not authorized to view this property")
 
     return prop
+
 
 @router.get("", response_model=List[PropertyPublicResponse])
 async def get_all_properties(
@@ -147,3 +168,84 @@ async def get_all_properties(
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
+
+@router.put("/{property_id}", response_model=PropertyResponse)
+async def update_property(
+    property_id: UUID,
+    property_update: PropertyUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_owner_data: dict = Depends(get_current_owner)
+):
+    """
+    Updates a property owned by the currently authenticated user.
+    """
+    current_user_id = UUID(current_owner_data["user"]["user_id"])
+    
+    prop = await db.get(Property, property_id)
+    
+    if not prop:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+        
+    if prop.user_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this property")
+
+    update_data = property_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(prop, key, value)
+        
+    await db.commit()
+    await db.refresh(prop)
+    
+    return prop
+
+@router.delete("/{property_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_property(
+    property_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_owner_data: dict = Depends(get_current_owner)
+):
+    """
+    Deletes a property owned by the currently authenticated user (soft delete).
+    """
+    current_user_id = UUID(current_owner_data["user"]["user_id"])
+    
+    prop = await db.get(Property, property_id)
+    
+    if not prop:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+        
+    if prop.user_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this property")
+        
+    prop.status = PropertyStatus.DELETED
+    await db.commit()
+    
+    return
+
+@router.patch("/{property_id}/reserve", response_model=PropertyResponse)
+async def reserve_property(
+    property_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_owner_data: dict = Depends(get_current_owner)
+):
+    """
+    Marks a property as 'RESERVED'.
+    """
+    current_user_id = UUID(current_owner_data["user"]["user_id"])
+    
+    prop = await db.get(Property, property_id)
+    
+    if not prop:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+        
+    if prop.user_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to reserve this property")
+
+    if prop.status != PropertyStatus.APPROVED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved properties can be reserved")
+        
+    prop.status = PropertyStatus.RESERVED
+    await db.commit()
+    await db.refresh(prop)
+    
+    return prop
