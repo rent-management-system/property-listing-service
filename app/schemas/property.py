@@ -50,9 +50,13 @@ class PropertyResponse(BaseModel):
 class PropertySubmitResponse(BaseModel):
     property_id: UUID4
     status: str
-    payment_id: Optional[UUID4]
-    chapa_tx_ref: Optional[str]
-    checkout_url: Optional[str] # Added checkout_url
+
+class PaymentInitiationResponse(BaseModel):
+    property_id: UUID4
+    status: str
+    payment_id: UUID4
+    chapa_tx_ref: str
+    checkout_url: str
 
 
 class PaymentConfirmation(BaseModel):
