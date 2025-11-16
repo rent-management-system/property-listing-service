@@ -7,7 +7,7 @@ from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate # Added PaymentStatusEnum
+    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse # Added PaymentStatusEnum
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
@@ -72,35 +72,9 @@ async def submit_property(
     await db.commit()
     await db.refresh(new_property)
 
-    try:
-        # Initiate payment with the payment service
-        request_id, payment_id, chapa_tx_ref, checkout_url = await initiate_payment(
-            property_id=new_property.id,
-            user_id=current_user['user_id'],
-            access_token=access_token
-        )
-        
-        # Store the payment_id and commit
-        new_property.payment_id = payment_id
-        await db.commit()
-        await db.refresh(new_property)
-
-    except Exception as e:
-        # If payment initiation fails, roll back property creation by deleting it.
-        logger.error("Failed to initiate payment, rolling back property creation", property_id=str(new_property.id), error_message=str(e))
-        await db.delete(new_property)
-        await db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Payment service is currently unavailable. Please try again later.",
-        )
-
     return {
         "property_id": new_property.id,
         "status": new_property.status.value,
-        "payment_id": new_property.payment_id,
-        "chapa_tx_ref": chapa_tx_ref,
-        "checkout_url": checkout_url # Return checkout_url
     }
 
 @router.get("/my-properties", response_model=List[PropertyResponse])
@@ -283,3 +257,58 @@ async def unreserve_property(
     await db.refresh(prop)
     
     return prop
+
+@router.patch("/{property_id}/approve-and-pay", response_model=PaymentInitiationResponse)
+async def approve_and_pay(
+    property_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_owner_data: dict = Depends(get_current_owner)
+):
+    """
+    Approves a PENDING property and initiates its payment process.
+    """
+    current_user = current_owner_data["user"]
+    access_token = current_owner_data["token"]
+
+    prop = await db.get(Property, property_id)
+
+    if not prop:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+    
+    if prop.user_id != UUID(current_user['user_id']):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to approve this property")
+
+    if prop.status != PropertyStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending properties can be approved for payment.")
+    
+    if prop.payment_status != PaymentStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment process already initiated or completed for this property.")
+
+    try:
+        # Initiate payment with the payment service
+        request_id, payment_id, chapa_tx_ref, checkout_url = await initiate_payment(
+            property_id=prop.id,
+            user_id=current_user['user_id'],
+            access_token=access_token
+        )
+        
+        # Store the payment_id and commit
+        prop.payment_id = payment_id
+        # The payment_status will be updated by the webhook after actual payment confirmation
+        await db.commit()
+        await db.refresh(prop)
+
+    except Exception as e:
+        logger.error("Failed to initiate payment for approval", property_id=str(prop.id), error_message=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payment service is currently unavailable. Please try again later.",
+        )
+
+    return {
+        "property_id": prop.id,
+        "status": prop.status.value, # Property status remains PENDING until payment is confirmed by webhook
+        "payment_id": payment_id,
+        "chapa_tx_ref": chapa_tx_ref,
+        "checkout_url": checkout_url
+    }
