@@ -34,8 +34,8 @@ class Property(Base):
     house_type = Column(String(50), nullable=False, default='private home') # Changed to house_type
     amenities = Column(JSON, default=[])
     photos = Column(JSON, default=[])
-    status = Column(Enum(PropertyStatus), nullable=False, default=PropertyStatus.PENDING)
-    payment_status = Column(Enum(PaymentStatus), nullable=False, default=PaymentStatus.PENDING) # New payment status
+    status = Column(Enum(PropertyStatus, native_enum=False), nullable=False, default=PropertyStatus.PENDING)
+    payment_status = Column(Enum(PaymentStatus, native_enum=False), nullable=False, default=PaymentStatus.PENDING) # New payment status
     approval_timestamp = Column(DateTime, nullable=True) # New approval timestamp
     lat = Column(Float, nullable=True) # Added lat
     lon = Column(Float, nullable=True) # Added lon

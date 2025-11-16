@@ -16,7 +16,7 @@ from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime # Added datetime
 
-from sqlalchemy import func, text, select, cast, TEXT
+from sqlalchemy import func, text, select
 from app.utils.object_storage import upload_file_to_object_storage
 from app.config import settings # Added settings
 
@@ -115,7 +115,7 @@ async def get_my_properties(
     
     query = select(Property).where(
         Property.user_id == current_user_id,
-        cast(Property.status, TEXT) != PropertyStatus.DELETED.value
+        Property.status != PropertyStatus.DELETED
     )
     result = await db.execute(query)
     properties = result.scalars().all()
@@ -209,6 +209,7 @@ async def delete_property(
     """
     current_user_id = UUID(current_owner_data["user"]["user_id"])
     
+    # First, get the property to check ownership
     prop = await db.get(Property, property_id)
     
     if not prop:
@@ -217,7 +218,12 @@ async def delete_property(
     if prop.user_id != current_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this property")
         
-    prop.status = PropertyStatus.DELETED
+    # Manually construct the SQL string to embed 'DELETED' directly
+    # This bypasses all parameter binding for the status value, forcing PostgreSQL to accept it as a literal.
+    sql_query = text(
+        f"UPDATE properties SET status = 'DELETED', updated_at = now() WHERE id = :id"
+    )
+    await db.execute(sql_query, {"id": property_id})
     await db.commit()
     
     return
