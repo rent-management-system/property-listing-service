@@ -255,3 +255,31 @@ async def reserve_property(
     await db.refresh(prop)
     
     return prop
+
+@router.patch("/{property_id}/unreserve", response_model=PropertyResponse)
+async def unreserve_property(
+    property_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_owner_data: dict = Depends(get_current_owner)
+):
+    """
+    Changes a property's status from 'RESERVED' back to 'APPROVED'.
+    """
+    current_user_id = UUID(current_owner_data["user"]["user_id"])
+    
+    prop = await db.get(Property, property_id)
+    
+    if not prop:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+        
+    if prop.user_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to unreserve this property")
+
+    if prop.status != PropertyStatus.RESERVED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only reserved properties can be unreserved")
+        
+    prop.status = PropertyStatus.APPROVED
+    await db.commit()
+    await db.refresh(prop)
+    
+    return prop
