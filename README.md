@@ -1,4 +1,4 @@
-# Payment Processing Microservice
+# Property Listing Service
 
 ## Table of Contents
 - [Introduction](#introduction)
@@ -11,38 +11,37 @@
   - [Installation](#installation)
   - [Database Setup](#database-setup)
   - [Running the Application](#running-the-application)
+- [Database Schema](#database-schema)
 - [API Endpoints](#api-endpoints)
-  - [Authentication](#authentication)
-  - [Payments](#payments)
-  - [Webhooks](#webhooks)
-  - [Health Check](#health-check)
-  - [Metrics](#metrics)
+  - [Public Endpoints](#public-endpoints)
+  - [Property Owner Endpoints](#property-owner-endpoints)
+  - [Service-to-Service Endpoints](#service-to-service-endpoints)
+  - [Admin / Metrics Endpoints](#admin--metrics-endpoints)
 - [Scheduled Tasks](#scheduled-tasks)
 - [Inter-Service Communication](#inter-service-communication)
+  - [Payment Processing Flow (via Chapa)](#payment-processing-flow-via-chapa)
 - [Logging](#logging)
 - [Error Handling](#error-handling)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Introduction
-The Payment Processing Microservice is a core component of the Rent Management System, meticulously designed to handle all payment-related operations with a strong emphasis on leveraging the **Chapa Payment Gateway**. This integration provides a robust, secure, and locally relevant solution for payment initiation, status tracking, and webhook processing. By utilizing Chapa, this service ensures that property listing payments are processed efficiently, verified reliably, and communicated seamlessly to relevant services within the ecosystem, offering a superior payment experience tailored for the Ethiopian market.
+The Property Listing Service is a central component of the Rent Management System, designed to manage the lifecycle of property listings. It enables property owners to submit, update, and manage their properties, provides public access to approved listings, and integrates with other services for user authentication, payment processing, and notifications. This service ensures that properties are accurately listed, easily discoverable, and properly managed throughout their active period.
 
 ## Features
--   **Chapa Payment Integration**: Seamlessly integrates with the Chapa Payment Gateway for secure and localized payment processing, supporting various local payment methods.
--   **Payment Initiation**: Securely initiates payments through the Chapa payment gateway, generating unique checkout URLs.
--   **Idempotency**: Prevents duplicate payment processing for the same request, ensuring reliable transactions.
--   **Payment Status Tracking**: Monitors and updates the status of payments (PENDING, SUCCESS, FAILED) in real-time.
--   **Chapa Webhook Handling**: Processes real-time payment status updates from Chapa via secure webhooks, ensuring immediate reflection of payment outcomes.
--   **Scheduled Payment Timeout**: Automatically marks pending payments as FAILED after a configurable period, maintaining data accuracy.
--   **Inter-Service Communication**: Integrates with User Management, Property Listing, and Notification services for a cohesive ecosystem.
--   **Authentication & Authorization**: Secures API endpoints using JWT and API keys for robust access control.
--   **Caching**: Utilizes Redis for caching user authentication data to improve performance and reduce load on upstream services.
--   **Rate Limiting**: Implements API rate limiting using Redis to protect against abuse and ensure service stability.
+-   **Property Submission**: Allows authenticated property owners to submit new property listings with detailed information and photos.
+-   **Geocoding Integration**: Automatically geocodes property locations for map-based search and display.
+-   **Listing Management**: Owners can view, update, soft-delete, reserve, and unreserve their properties.
+-   **Public Property Search**: Provides robust search and filtering capabilities for approved properties based on location, price, amenities, and full-text search.
+-   **Payment Integration**: Seamlessly integrates with the Payment Processing Service for listing approval payments, ensuring properties are paid for before public display.
+-   **Property Status Management**: Manages property lifecycle statuses (PENDING, APPROVED, REJECTED, RESERVED, DELETED).
+-   **Object Storage for Photos**: Utilizes object storage for efficient and scalable handling of property images.
+-   **Authentication & Authorization**: Secures API endpoints using JWT for user roles (Owner, Admin) and API keys for service-to-service communication.
 -   **Structured Logging**: Provides detailed, structured logs for better observability, debugging, and monitoring.
--   **Health Checks & Metrics**: Offers endpoints for monitoring service health and operational metrics, ensuring high availability.
+-   **Health Checks & Metrics**: Offers endpoints for monitoring service health and operational metrics.
 
 ## Architecture
-The Payment Processing Microservice operates within a broader microservices ecosystem. Below is a C4 Context diagram illustrating its interactions with other key systems.
+The Property Listing Service operates within a broader microservices ecosystem. Below is a C4 Context diagram illustrating its interactions with other key systems.
 
 ```mermaid
 C4Context
@@ -50,36 +49,32 @@ C4Context
 
     System_Ext(User, "User", "End-users interacting with the system")
     System_Ext(Landlord, "Landlord", "Property owners using the system")
-    System_Ext(ChapaPaymentGateway, "Chapa Payment Gateway", "External payment processing service")
-    System_Ext(Redis, "Redis", "External caching and rate limiting service")
+    System_Ext(ObjectStorage, "Object Storage", "External service for storing property photos (e.g., AWS S3, MinIO)")
+    System_Ext(GeocodingService, "Geocoding Service", "External service for converting addresses to coordinates (e.g., Gebeta)")
 
     System(UserManagementService, "User Management Service", "Manages user authentication and profiles")
-    System(PropertyListingService, "Property Listing Service", "Manages property listings and approvals")
+    System(PaymentProcessingService, "Payment Processing Service", "Handles payment initiation, status tracking, and webhooks")
     System(NotificationService, "Notification Service", "Handles sending notifications to users")
-    System(PaymentProcessingMicroservice, "Payment Processing Microservice", "Handles payment initiation, status tracking, and webhooks")
+    System(PropertyListingService, "Property Listing Service", "Manages property listings and approvals")
 
-    Rel(User, PaymentProcessingMicroservice, "Initiates payments via")
-    Rel(Landlord, PaymentProcessingMicroservice, "Initiates payments via")
-    Rel(PaymentProcessingMicroservice, ChapaPaymentGateway, "Initiates and verifies payments with")
-    Rel(ChapaPaymentGateway, PaymentProcessingMicroservice, "Sends webhook notifications to")
-    Rel(PaymentProcessingMicroservice, UserManagementService, "Verifies user tokens and fetches user details from")
-    Rel(PaymentProcessingMicroservice, PropertyListingService, "Notifies about payment status (success/failure)")
-    Rel(PaymentProcessingMicroservice, NotificationService, "Sends payment-related notifications via")
-    Rel(PaymentProcessingMicroservice, Redis, "Uses for caching and rate limiting")
-    Rel(PaymentProcessingMicroservice, UserManagementService, "Proxies authentication requests to")
+    Rel(User, PropertyListingService, "Views and searches properties via")
+    Rel(Landlord, PropertyListingService, "Submits and manages properties via")
+    Rel(PropertyListingService, UserManagementService, "Verifies user tokens and fetches user details from")
+    Rel(PropertyListingService, PaymentProcessingService, "Initiates payment for listing approval with")
+    Rel(PaymentProcessingService, PropertyListingService, "Notifies about payment status (success/failure) via webhook")
+    Rel(PropertyListingService, NotificationService, "Sends property-related notifications via")
+    Rel(PropertyListingService, ObjectStorage, "Stores and retrieves property photos from")
+    Rel(PropertyListingService, GeocodingService, "Resolves property locations to coordinates with")
 ```
 
 ## Technologies Used
 -   **FastAPI**: High-performance web framework for building APIs.
 -   **SQLAlchemy (Async)**: Asynchronous ORM for interacting with PostgreSQL.
--   **PostgreSQL**: Relational database for storing payment records.
+-   **PostgreSQL**: Relational database for storing property records.
 -   **Pydantic**: Data validation and settings management.
--   **Chapa API**: Integration with the Chapa payment gateway.
--   **Redis**: In-memory data store for caching user authentication and API rate limiting.
--   **APScheduler**: For scheduling background tasks, specifically payment timeouts.
+-   **Gebeta API**: Integration with a geocoding service for location data.
 -   **httpx**: A fully featured asynchronous HTTP client for making requests to external services.
 -   **python-jose**: For JSON Web Token (JWT) handling.
--   **cryptography**: For secure data encryption (Fernet).
 -   **structlog**: For structured, machine-readable logging.
 -   **Docker**: For containerization and deployment.
 
@@ -88,7 +83,7 @@ C4Context
 ### Prerequisites
 Before you begin, ensure you have the following installed:
 -   Python 3.10+
--   Docker and Docker Compose (for local development with services like PostgreSQL and Redis)
+-   Docker and Docker Compose (for local development with services like PostgreSQL)
 -   `pip` (Python package installer)
 
 ### Environment Variables
@@ -97,25 +92,23 @@ Create a `.env` file in the root directory of the project based on the `.env.exa
 ```
 # .env.example
 DATABASE_URL="postgresql+asyncpg://user:password@host:port/dbname"
-CHAPA_API_KEY="your_chapa_api_key"
-CHAPA_SECRET_KEY="your_chapa_secret_key"
-CHAPA_WEBHOOK_SECRET="your_chapa_webhook_secret"
 JWT_SECRET="your_jwt_secret_key_for_signing_tokens"
 USER_MANAGEMENT_URL="http://localhost:8001" # URL of the User Management Service
+PAYMENT_PROCESSING_SERVICE_URL="http://localhost:8000" # URL of the Payment Processing Service
 NOTIFICATION_SERVICE_URL="http://localhost:8002" # URL of the Notification Service
-PROPERTY_LISTING_SERVICE_URL="http://localhost:8003" # URL of the Property Listing Service
-ENCRYPTION_KEY="your_fernet_encryption_key_32_url_safe_base64_bytes" # Generate with `Fernet.generate_key().decode()`
-REDIS_URL="redis://localhost:6379/0"
-PAYMENT_SERVICE_API_KEY="your_service_to_service_api_key" # API key for this service to authenticate with others
-FRONTEND_REDIRECT_URL="http://localhost:3000/payment-status" # Frontend URL for post-payment redirection
+GEBETA_API_KEY="your_gebeta_api_key" # API key for the geocoding service
+OBJECT_STORAGE_BUCKET_NAME="your-bucket-name"
+OBJECT_STORAGE_ENDPOINT_URL="http://localhost:9000" # e.g., MinIO endpoint
+OBJECT_STORAGE_ACCESS_KEY="your_access_key"
+OBJECT_STORAGE_SECRET_KEY="your_secret_key"
+PROPERTY_WEBHOOK_API_KEY="a_secret_key_for_payment_service_to_call_this_service" # API key for Payment Service to authenticate with this service
 ```
-**Note**: For `ENCRYPTION_KEY`, you can generate one using `from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())` in a Python console.
 
 ### Installation
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/rent-management-system/Rent-management--system--payment-processing-service
-    cd Rent-management--system -payment-processing-service
+    git clone https://github.com/rent-management-system/Rent-management--system--property-listing-service # Adjust repository name if different
+    cd Rent-management--system--property-listing-service
     ```
 
 2.  **Create a virtual environment** (recommended):
@@ -137,125 +130,97 @@ This service uses PostgreSQL. You can set up a local PostgreSQL instance using D
     ```bash
     ./migrate.sh
     ```
-    This script will apply the `sql/schema.sql` to your database. Make sure `psql` is available in your PATH or adjust the script accordingly.
+    This script will apply the necessary schema and migrations to your database.
 
 ### Running the Application
-1.  **Start dependent services**: Ensure your PostgreSQL, Redis, User Management, Property Listing, and Notification services are running and accessible as configured in your `.env` file.
+1.  **Start dependent services**: Ensure your PostgreSQL, User Management, Payment Processing, and Notification services are running and accessible as configured in your `.env` file.
 2.  **Run the FastAPI application**:
     ```bash
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
     ```
     The `--reload` flag is useful for development as it restarts the server on code changes. For production, remove this flag.
 
-The API documentation will be available at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc` (ReDoc).
+The API documentation will be available at `http://localhost:8003/docs` (Swagger UI) and `http://localhost:8003/redoc` (ReDoc).
+
+## Database Schema
+The core data for this service is stored in the `properties` table. Below is a simplified representation of its schema:
+
+```mermaid
+erDiagram
+    properties {
+        UUID id PK
+        UUID user_id FK "User Management Service"
+        UUID payment_id FK "Payment Processing Service"
+        VARCHAR(255) title
+        TEXT description
+        VARCHAR(255) location
+        NUMERIC(10, 2) price
+        VARCHAR(50) house_type ENUM("condominium", "private home", ...)
+        JSON amenities
+        JSON photos
+        ENUM("PENDING", "APPROVED", "REJECTED", "RESERVED", "DELETED") status
+        ENUM("PENDING", "SUCCESS", "FAILED", "PAID") payment_status
+        DATETIME approval_timestamp
+        FLOAT lat
+        FLOAT lon
+        DATETIME created_at
+        DATETIME updated_at
+        TSVECTOR fts
+    }
+```
 
 ## API Endpoints
+This service exposes several API endpoints categorized by their access level and functionality. For detailed request/response examples and parameter descriptions, please refer to `API_DOCUMENTATION.md`.
 
-### Authentication
--   **`POST /token`**
-    -   **Description**: Logs in a user by proxying the request to the User Management microservice and returns an access token.
-    -   **Permissions**: Public
-    -   **User Types**: Any authenticated user (via User Management Service)
-    -   **Parameters**:
-        -   `username` (form data): User's username.
-        -   `password` (form data): User's password.
-    -   **Responses**:
-        -   `200 OK`: Returns JWT access token.
-        -   `401 Unauthorized`: Invalid credentials.
-        -   `503 Service Unavailable`: User Management service is down.
+### Public Endpoints
+-   **`GET /properties`**: Retrieve a paginated and filterable list of all approved properties.
+-   **`GET /properties/{id}`**: Retrieve details of a specific property (accessible if approved, or if user is owner/admin).
 
-### Payments
--   **`POST /api/v1/payments/initiate`**
-    -   **Description**: Initiates a payment for a property listing through the Chapa gateway. This endpoint is idempotent.
-    -   **Permissions**: Authenticated (Owner role via JWT or Service-to-Service via API Key)
-    -   **User Types**: Landlord (Owner), Internal Services
-    -   **Parameters (Request Body - `PaymentCreate`)**:
-        -   `request_id` (UUID): Unique ID for idempotency.
-        -   `property_id` (UUID): ID of the property listing.
-        -   `user_id` (UUID): ID of the user initiating the payment.
-        -   `amount` (float): The fixed amount for the payment (currently hardcoded to 500.00 ETB).
-    -   **Responses**:
-        -   `202 Accepted`: Payment initiation successful, returns `PaymentResponse` including `checkout_url`.
-        -   `400 Bad Request`: Invalid input or Chapa initialization failure.
-        -   `401 Unauthorized`: Missing or invalid authentication.
-        -   `403 Forbidden`: User not authorized (e.g., not an Owner).
-        -   `404 Not Found`: User details not found for service-initiated payments.
-        -   `429 Too Many Requests`: Rate limit exceeded.
-        -   `500 Internal Server Error`: Unexpected server error.
+### Property Owner Endpoints
+(Require `Owner` role authentication)
+-   **`POST /properties/submit`**: Submit a new property listing.
+-   **`GET /properties/my-properties`**: Retrieve all properties owned by the authenticated user.
+-   **`PUT /properties/{property_id}`**: Update an existing property.
+-   **`DELETE /properties/{property_id}`**: Soft delete a property.
+-   **`PATCH /properties/{property_id}/reserve`**: Mark an approved property as reserved.
+-   **`PATCH /properties/{property_id}/unreserve`**: Change a reserved property back to approved.
+-   **`PATCH /properties/{property_id}/approve-and-pay`**: Initiate payment for a pending property to get it approved.
 
--   **`GET /api/v1/payments/{payment_id}/status`**
-    -   **Description**: Retrieves the current status of a specific payment.
-    -   **Permissions**: Authenticated (User who initiated payment or Admin role)
-    -   **User Types**: Landlord, Admin
-    -   **Parameters (Path)**:
-        -   `payment_id` (UUID): The ID of the payment to retrieve.
-    -   **Responses**:
-        -   `200 OK`: Returns `PaymentResponse` with payment details.
-        -   `401 Unauthorized`: Missing or invalid authentication.
-        -   `403 Forbidden`: User not authorized to view this payment.
-        -   `404 Not Found`: Payment not found.
+### Service-to-Service Endpoints
+-   **`POST /payments/confirm`**: Internal webhook endpoint for the Payment Processing Service to confirm payment status and update property approval. (Requires `PROPERTY_WEBHOOK_API_KEY`).
 
-### Webhooks
--   **`GET/POST /api/v1/webhook/chapa`**
-    -   **Description**: Endpoint for Chapa payment gateway to send real-time payment status updates (POST) or for redirecting users after payment (GET).
-    -   **Permissions**: Public (Chapa gateway)
-    -   **User Types**: N/A (System-to-System)
-    -   **Parameters**:
-        -   **POST (Request Body)**: Chapa webhook payload containing `tx_ref`, `status`, and `meta` data.
-        -   **POST (Header)**: `X-Chapa-Signature` for webhook verification.
-        -   **GET (Query Params)**: `trx_ref` and `status` for redirect.
-    -   **Responses**:
-        -   `200 OK`: Webhook processed successfully.
-        -   `400 Bad Request`: Invalid payload or missing parameters.
-        -   `401 Unauthorized`: Invalid webhook signature.
-
-### Health Check
--   **`GET /api/v1/health`**
-    -   **Description**: Performs a health check on the service, including database and Chapa API connectivity.
-    -   **Permissions**: Public
-    -   **User Types**: Monitoring Systems
-    -   **Responses**:
-        -   `200 OK`: Service is healthy.
-        -   `503 Service Unavailable`: Service is unhealthy, details provided in response.
-
-### Metrics
--   **`GET /api/v1/metrics`**
-    -   **Description**: Returns in-memory operational metrics for the service (e.g., total payments, successful payments, webhook calls).
-    -   **Permissions**: Public
-    -   **User Types**: Monitoring Systems
-    -   **Responses**:
-        -   `200 OK`: Returns a JSON object with various metrics.
-
-## Chapa Payment Gateway Integration
-This microservice deeply integrates with the **Chapa Payment Gateway**, a leading payment solution tailored for the Ethiopian market. This integration is a cornerstone of the service, offering several key advantages:
-
--   **Localized Payment Options**: Chapa enables support for various local payment methods, making the payment process accessible and convenient for users in Ethiopia.
--   **Seamless Checkout Experience**: By leveraging Chapa's API, the service provides a smooth and secure checkout flow, redirecting users to Chapa's hosted payment page and handling post-payment redirects back to the frontend.
--   **Real-time Status Updates**: Chapa's robust webhook system allows the microservice to receive instant notifications on payment status changes (success, failure, pending), ensuring that payment records are always up-to-date.
--   **Enhanced Security**: The integration includes webhook signature verification, adding an extra layer of security to ensure that incoming webhook notifications are legitimate and untampered.
--   **Reliable Transaction Verification**: Beyond webhooks, the service actively verifies payment statuses with Chapa's API, providing a double-check mechanism for critical transactions.
-
-This strategic integration with Chapa not only streamlines payment processing but also significantly enhances the user experience by providing a trusted and efficient payment infrastructure.
+### Admin / Metrics Endpoints
+-   **`GET /properties/metrics`**: Retrieve operational metrics for property listings (e.g., counts by status).
 
 ## Scheduled Tasks
-The service includes an asynchronous scheduler (`APScheduler`) to run background tasks:
--   **`timeout_pending_payments`**: Runs every 24 hours. It queries the database for payments with `PENDING` status that were created more than `PAYMENT_TIMEOUT_DAYS` (configured in `.env`) ago and updates their status to `FAILED`. It also attempts to notify the Property Listing Service about these failed payments.
+The service may include scheduled tasks for maintenance or background processing, such as:
+-   **Property Cleanup**: Tasks to handle properties that remain in certain states for too long or require periodic review. (Refer to `app/services/property_cleanup.py` for details).
 
 ## Inter-Service Communication
-This microservice interacts with several other services:
+This microservice is designed to operate within a larger ecosystem, communicating with other services to fulfill its responsibilities.
 
 -   **User Management Service**:
-    -   **Authentication Proxy**: The `/token` endpoint forwards authentication requests to the User Management Service.
-    -   **Token Verification**: During API calls, JWT tokens are verified against the User Management Service.
-    -   **User Details Fetch**: When a service initiates a payment, user details are fetched from the User Management Service for Chapa and notification purposes.
--   **Property Listing Service**:
-    -   **Payment Confirmation**: After a payment is successfully processed or times out/fails, this service sends a confirmation to the Property Listing Service to update the property's status (e.g., approve listing).
+    -   **Authentication & Authorization**: This service relies heavily on the User Management Service for authenticating users and authorizing their actions. JWT tokens issued by the User Management Service are validated for every protected endpoint. User roles (e.g., 'Owner', 'Admin') determine access levels.
+    -   **User Details Fetch**: When necessary (e.g., for payment initiation or notifications), this service may fetch additional user details from the User Management Service.
+-   **Payment Processing Service**:
+    -   **Payment Initiation**: When a property owner wishes to get their `PENDING` property `APPROVED` for public listing, they call the `/properties/{property_id}/approve-and-pay` endpoint. This service then makes an internal service-to-service call to the Payment Processing Service to initiate the payment. The Payment Processing Service handles the actual interaction with payment gateways like Chapa.
+    -   **Webhook Reception**: After a payment is processed (successfully or not) by the Payment Processing Service, it sends a webhook notification to this service's `/payments/confirm` endpoint. This webhook is crucial for updating the `payment_status` and `status` of the property (e.g., changing from `PENDING` to `APPROVED` upon successful payment).
 -   **Notification Service**:
-    -   **Event Notifications**: Sends notifications to users (e.g., payment initiated, payment successful, payment failed) via the Notification Service. It supports multi-language templates.
--   **Chapa Payment Gateway**:
-    -   **Payment Initialization**: Initiates payment transactions and retrieves checkout URLs.
-    -   **Payment Verification**: Verifies the status of transactions with Chapa's API.
-    -   **Webhook Reception**: Receives real-time updates from Chapa regarding payment status changes.
+    -   **Event Notifications**: This service sends various event-driven notifications (e.g., property approval, payment status updates, listing expiry warnings) to users via the Notification Service. This ensures users are kept informed about the status of their listings.
+-   **Geocoding Service (Gebeta)**:
+    -   **Location Resolution**: Upon property submission, the provided `location` string is sent to the Gebeta Geocoding Service to resolve it into precise geographical coordinates (`lat`, `lon`). This enables map-based search and location-aware features.
+-   **Object Storage**:
+    -   **Photo Management**: Property images uploaded by owners are stored in a configured object storage solution (e.g., MinIO, AWS S3). This service handles the upload and retrieval of these photo URLs.
+
+### Payment Processing Flow (via Chapa)
+The payment process for property listing approval is orchestrated through the dedicated Payment Processing Service, which integrates with the **Chapa Payment Gateway**.
+
+1.  **Owner Initiates Payment**: A property owner calls the `PATCH /properties/{property_id}/approve-and-pay` endpoint on this Property Listing Service.
+2.  **Internal Call to Payment Service**: The Property Listing Service makes a secure, authenticated internal call to the Payment Processing Service, requesting to initiate a payment for the specified `property_id` and `user_id`.
+3.  **Payment Service & Chapa**: The Payment Processing Service then interacts with the Chapa Payment Gateway to create a transaction and obtain a `checkout_url`.
+4.  **Redirect to Chapa**: The `checkout_url` is returned to the Property Listing Service, which then passes it back to the frontend. The frontend is responsible for redirecting the user's browser to this Chapa `checkout_url` to complete the payment.
+5.  **Chapa Webhook to Payment Service**: Once the user completes the payment on Chapa's platform, Chapa sends a webhook notification to the Payment Processing Service, updating it on the payment's final status (SUCCESS/FAILED).
+6.  **Payment Service Webhook to Property Listing Service**: The Payment Processing Service, in turn, sends its own internal webhook to the Property Listing Service's `POST /payments/confirm` endpoint. This final webhook updates the `payment_status` and, if successful, changes the property's `status` from `PENDING` to `APPROVED`, making it publicly visible.
 
 ## Logging
 The service uses `structlog` for structured logging. This provides machine-readable logs that are easier to parse, filter, and analyze with log management tools. Logs are output to `stdout` and can be configured for JSON or console rendering.
@@ -263,7 +228,7 @@ The service uses `structlog` for structured logging. This provides machine-reada
 ## Error Handling
 -   **HTTPException**: FastAPI's `HTTPException` is used for standard HTTP error responses (e.g., 400 Bad Request, 401 Unauthorized, 404 Not Found).
 -   **Retry Mechanism**: The `app.utils.retry.py` module provides an `@async_retry` decorator for resilient communication with external services, handling transient network issues or service unavailability with exponential backoff.
--   **Service Unavailable**: Specific `HTTPException`s are raised when dependent services (User Management, Property Listing, Chapa) are unresponsive.
+-   **Service Unavailable**: Specific `HTTPException`s are raised when dependent services are unresponsive.
 
 ## Contributing
 Contributions are welcome! Please follow standard GitHub flow:
