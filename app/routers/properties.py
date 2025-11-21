@@ -126,7 +126,7 @@ async def get_property(
     return prop
 
 
-@router.get("", response_model=List[PropertyPublicResponse])
+@router.get("", response_model=PropertyListResponse)
 async def get_all_properties(
     db: AsyncSession = Depends(get_db),
     location: Optional[str] = None,
@@ -186,7 +186,7 @@ async def get_property_public(
         raise HTTPException(status_code=404, detail="Property not found")
     return prop
 
-@router.get("/public", response_model=PropertyListResponse)
+@router.get("/public", response_model=List[PropertyPublicResponse])
 async def get_all_properties_public(
     db: AsyncSession = Depends(get_db),
     location: Optional[str] = None,
