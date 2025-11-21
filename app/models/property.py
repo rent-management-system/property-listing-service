@@ -1,6 +1,6 @@
 import enum
 from sqlalchemy import (Column, String, Text, Numeric, JSON, Enum, 
-                        create_engine, MetaData, Float, DateTime, Index) # Added DateTime, Index
+                        create_engine, MetaData, Float, DateTime, Index, Integer) # Added DateTime, Index, Integer
 from sqlalchemy.dialects.postgresql import UUID, TSVECTOR # Added TSVECTOR
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
@@ -40,6 +40,9 @@ class Property(Base):
     approval_timestamp = Column(DateTime, nullable=True) # New approval timestamp
     lat = Column(Float, nullable=True) # Added lat
     lon = Column(Float, nullable=True) # Added lon
+    bedrooms = Column(Integer, nullable=True) # Added bedrooms
+    bathrooms = Column(Integer, nullable=True) # Added bathrooms
+    area_sqm = Column(Float, nullable=True) # Added area in square meters
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False) # Added created_at
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False) # Added updated_at
     fts = Column(TSVECTOR, nullable=True) # Added fts for full-text search

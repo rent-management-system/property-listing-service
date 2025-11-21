@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS properties (
     status propertystatus NOT NULL DEFAULT 'PENDING',
     lat FLOAT,
     lon FLOAT,
+    bedrooms INTEGER,
+    bathrooms INTEGER,
+    area_sqm FLOAT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     fts tsvector

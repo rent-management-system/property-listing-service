@@ -45,6 +45,9 @@ class PropertyResponse(BaseModel):
     approval_timestamp: Optional[datetime] # Added approval_timestamp
     lat: Optional[float]
     lon: Optional[float]
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+    area_sqm: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -80,6 +83,9 @@ class PropertyPublicResponse(BaseModel):
     approval_timestamp: Optional[datetime] # Added approval_timestamp
     lat: Optional[float]
     lon: Optional[float]
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+    area_sqm: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -89,3 +95,6 @@ class PropertyUpdate(BaseModel):
     description: Optional[str] = None
     price: Optional[Decimal] = None
     amenities: Optional[List[str]] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+    area_sqm: Optional[float] = None

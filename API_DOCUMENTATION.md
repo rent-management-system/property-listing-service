@@ -106,6 +106,9 @@ Submits a new property for review. The property will initially have a `PENDING` 
 | `house_type` | `string` | The type of house (e.g., `apartment`, `villa`). See `HouseType` enum for valid values. |
 | `amenities` | `array[string]` | A list of amenities (e.g., `["WiFi", "Parking"]`). |
 | `file` | `file` | The main image file for the property. |
+| `bedrooms` | `integer` | (Optional) Number of bedrooms. |
+| `bathrooms` | `integer` | (Optional) Number of bathrooms. |
+| `area_sqm` | `number` | (Optional) Total area in square meters. |
 
 #### Example Request
 
@@ -119,6 +122,9 @@ curl -X POST "https://property-listing-service.onrender.com/api/v1/properties/su
   -F "house_type=villa" \
   -F "amenities=garden" \
   -F "amenities=parking" \
+  -F "bedrooms=4" \
+  -F "bathrooms=3" \
+  -F "area_sqm=220" \
   -F "file=@/path/to/your/image.jpg;type=image/jpeg"
 ```
 

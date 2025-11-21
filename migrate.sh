@@ -4,7 +4,11 @@ set -e
 # Load environment variables safely
 if [ -f .env ]; then
     set -a
-    source .env
+    # shellcheck disable=SC1091
+    if ! source .env; then
+        echo "Error: Failed to source .env. Ensure every line is KEY=VALUE (no bare URLs)." >&2
+        exit 1
+    fi
     set +a
 fi
 
@@ -15,8 +19,8 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "Running Alembic migrations..."
-# Explicitly call alembic from the virtual environment's bin directory
-"/home/dagi/Desktop/flash files one documentes and desktop /prop- search/search_filters/.venv/bin/alembic" upgrade heads
+# Use the project's virtual environment Alembic binary
+"$(pwd)/Bate/bin/alembic" upgrade head
 
 # Apply seed data only if seed.sql exists and after migrations
 if [ -f sql/seed.sql ]; then

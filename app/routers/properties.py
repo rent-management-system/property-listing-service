@@ -47,6 +47,9 @@ async def submit_property(
     house_type: HouseType = Form(...),
     amenities: List[str] = Form(...),
     file: UploadFile = File(...),
+    bedrooms: Optional[int] = Form(None),
+    bathrooms: Optional[int] = Form(None),
+    area_sqm: Optional[float] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_owner_data: dict = Depends(get_current_owner)
 ):
@@ -66,6 +69,9 @@ async def submit_property(
         photos=[image_url],
         lat=geocoded_data["lat"],
         lon=geocoded_data["lon"],
+        bedrooms=bedrooms,
+        bathrooms=bathrooms,
+        area_sqm=area_sqm,
         payment_status=PaymentStatus.PENDING # Set initial payment status
     )
     db.add(new_property)
