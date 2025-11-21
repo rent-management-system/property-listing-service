@@ -20,6 +20,7 @@ class PaymentStatus(enum.Enum): # New Enum for payment status
     PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    PAID = "PAID"
 
 class Property(Base):
     __tablename__ = 'properties'
