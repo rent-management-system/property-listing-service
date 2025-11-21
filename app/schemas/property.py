@@ -15,11 +15,13 @@ class HouseType(str, Enum):
     HOUSE = "house"
     GUESTHOUSE = "guesthouse"
     PENTHOUSE = "penthouse"
+    CONDO = "condo"
 
 class PaymentStatusEnum(str, Enum): # Renamed to avoid conflict with model enum
     PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    PAID = "PAID"
 
 class PropertySubmit(BaseModel):
     title: str
