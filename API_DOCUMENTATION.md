@@ -74,6 +74,9 @@ curl -X GET "https://property-listing-service.onrender.com/api/v1/properties?loc
     "house_type": "apartment",
     "amenities": ["wifi", "kitchen"],
     "photos": ["http://example.com/image1.jpg"],
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "area_sqm": 75,
     "status": "APPROVED",
     "payment_status": "SUCCESS",
     "approval_timestamp": "2023-10-27T10:00:00Z",
@@ -165,6 +168,9 @@ curl -X GET "https://property-listing-service.onrender.com/api/v1/properties/my-
     "house_type": "apartment",
     "amenities": ["wifi"],
     "photos": ["http://example.com/image1.jpg"],
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "area_sqm": 70,
     "status": "PENDING",
     "payment_status": "PENDING",
     "approval_timestamp": null,
@@ -195,7 +201,10 @@ Updates an existing property owned by the authenticated user. Only the owner can
   "title": "Updated Property Title",
   "description": "This is an updated description.",
   "price": 5000.00,
-  "amenities": ["new amenity", "another amenity"]
+  "amenities": ["new amenity", "another amenity"],
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "area_sqm": 120
 }
 ```
 
@@ -223,6 +232,9 @@ curl -X PUT "https://property-listing-service.onrender.com/api/v1/properties/YOU
   "house_type": "apartment",
   "amenities": ["wifi", "parking"],
   "photos": ["http://example.com/image1.jpg"],
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "area_sqm": 120,
   "status": "PENDING",
   "payment_status": "PENDING",
   "approval_timestamp": null,
