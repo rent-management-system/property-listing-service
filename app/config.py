@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()  # this loads all variables from your .env automatically
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):

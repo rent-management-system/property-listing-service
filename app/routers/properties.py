@@ -1,29 +1,39 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
-# import shutil # Removed shutil
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, text
+from typing import List, Optional
+from uuid import UUID
+from decimal import Decimal
+from datetime import datetime
 import structlog
+
 from app.dependencies.database import get_db
 from app.dependencies.auth import get_current_owner, get_current_user
-from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
+from app.models.property import Property, PropertyStatus, PaymentStatus
 from app.schemas.property import (
-    PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse # Added PaymentStatusEnum
+    PropertySubmitResponse, PropertyResponse, PropertyPublicResponse,
+    HouseType, PropertyUpdate, PaymentInitiationResponse
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
-from uuid import UUID
-from typing import List, Optional
-from decimal import Decimal
-from datetime import datetime # Added datetime
-
-from sqlalchemy import func, text, select
 from app.utils.object_storage import upload_file_to_object_storage
-from app.config import settings # Added settings
 
 logger = structlog.get_logger(__name__)
-
 router = APIRouter()
 
+# ----------------- Random Properties -----------------
+@router.get("/random", response_model=List[PropertyPublicResponse])
+async def get_random_properties(limit: int = 6, db: AsyncSession = Depends(get_db)):
+    """
+    Returns a list of random approved properties.
+    """
+    query = select(Property).where(Property.status == PropertyStatus.APPROVED).order_by(func.random()).limit(limit)
+    result = await db.execute(query)
+    properties = result.scalars().all()
+    logger.info("random_properties_fetched", count=len(properties))
+    return properties
+
+# ----------------- Metrics -----------------
 @router.get("/metrics")
 async def get_metrics(db: AsyncSession = Depends(get_db)):
     logger.info("metrics_accessed", endpoint="metrics", service="property")
@@ -38,6 +48,7 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
         "rejected": rejected
     }
 
+# ----------------- Submit Property -----------------
 @router.post("/submit", status_code=status.HTTP_201_CREATED, response_model=PropertySubmitResponse)
 async def submit_property(
     title: str = Form(...),
@@ -52,6 +63,7 @@ async def submit_property(
 ):
     current_user = current_owner_data["user"]
     access_token = current_owner_data["token"]
+
     image_url = await upload_file_to_object_storage(file)
     geocoded_data = await geocode_location_with_fallback(location)
 
@@ -66,8 +78,9 @@ async def submit_property(
         photos=[image_url],
         lat=geocoded_data["lat"],
         lon=geocoded_data["lon"],
-        payment_status=PaymentStatus.PENDING # Set initial payment status
+        payment_status=PaymentStatus.PENDING
     )
+
     db.add(new_property)
     await db.commit()
     await db.refresh(new_property)
@@ -77,43 +90,38 @@ async def submit_property(
         "status": new_property.status.value,
     }
 
+# ----------------- My Properties -----------------
 @router.get("/my-properties", response_model=List[PropertyResponse])
 async def get_my_properties(
     db: AsyncSession = Depends(get_db),
     current_owner_data: dict = Depends(get_current_owner)
 ):
-    """
-    Retrieves all properties owned by the currently authenticated user.
-    """
     current_user_id = UUID(current_owner_data["user"]["user_id"])
-    
     query = select(Property).where(
         Property.user_id == current_user_id,
         Property.status != PropertyStatus.DELETED
     )
     result = await db.execute(query)
     properties = result.scalars().all()
-    
     return properties
 
-
+# ----------------- Get Property by ID -----------------
 @router.get("/{id}", response_model=PropertyResponse)
 async def get_property(
-    id: UUID, 
-    db: AsyncSession = Depends(get_db), 
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     prop = await db.get(Property, id)
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Check ownership or admin role
-    if str(prop.user_id) != current_user['user_id'] and current_user['role'].lower() != 'admin': # Ensure comparison is correct
+    if str(prop.user_id) != current_user['user_id'] and current_user['role'].lower() != 'admin':
         raise HTTPException(status_code=403, detail="Not authorized to view this property")
 
     return prop
 
-
+# ----------------- Get All Properties -----------------
 @router.get("", response_model=List[PropertyPublicResponse])
 async def get_all_properties(
     db: AsyncSession = Depends(get_db),
@@ -128,7 +136,11 @@ async def get_all_properties(
     query = select(Property).where(Property.status == PropertyStatus.APPROVED)
 
     if search and db.bind.dialect.name != "sqlite":
-        query = query.where(text("to_tsvector('english', title || ' ' || description) @@ to_tsquery('english', :search_query)").bindparams(search_query=search))
+        query = query.where(
+            text(
+                "to_tsvector('english', title || ' ' || description) @@ to_tsquery('english', :search_query)"
+            ).bindparams(search_query=search)
+        )
     if location:
         query = query.where(Property.location.ilike(f"%{location}%"))
     if min_price:
@@ -136,13 +148,13 @@ async def get_all_properties(
     if max_price:
         query = query.where(Property.price <= max_price)
     if amenities:
-        # Ensure amenities are treated as an array in the query
         query = query.where(Property.amenities.op('&&')(amenities))
 
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 
+# ----------------- Update Property -----------------
 @router.put("/{property_id}", response_model=PropertyResponse)
 async def update_property(
     property_id: UUID,
@@ -150,151 +162,98 @@ async def update_property(
     db: AsyncSession = Depends(get_db),
     current_owner_data: dict = Depends(get_current_owner)
 ):
-    """
-    Updates a property owned by the currently authenticated user.
-    """
     current_user_id = UUID(current_owner_data["user"]["user_id"])
-    
     prop = await db.get(Property, property_id)
-    
     if not prop:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
-        
     if prop.user_id != current_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this property")
 
     update_data = property_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(prop, key, value)
-        
+
     await db.commit()
     await db.refresh(prop)
-    
     return prop
 
+# ----------------- Delete Property (Soft Delete) -----------------
 @router.delete("/{property_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_property(
     property_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_owner_data: dict = Depends(get_current_owner)
 ):
-    """
-    Deletes a property owned by the currently authenticated user (soft delete).
-    """
     current_user_id = UUID(current_owner_data["user"]["user_id"])
-    
-    # First, get the property to check ownership
     prop = await db.get(Property, property_id)
-    
     if not prop:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
-        
     if prop.user_id != current_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this property")
-        
-    # Manually construct the SQL string to embed 'DELETED' directly
-    # This bypasses all parameter binding for the status value, forcing PostgreSQL to accept it as a literal.
+
     sql_query = text(
         f"UPDATE properties SET status = 'DELETED', updated_at = now() WHERE id = :id"
     )
     await db.execute(sql_query, {"id": property_id})
     await db.commit()
-    
     return
 
+# ----------------- Reserve / Unreserve -----------------
 @router.patch("/{property_id}/reserve", response_model=PropertyResponse)
-async def reserve_property(
-    property_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_owner_data: dict = Depends(get_current_owner)
-):
-    """
-    Marks a property as 'RESERVED'.
-    """
+async def reserve_property(property_id: UUID, db: AsyncSession = Depends(get_db), current_owner_data: dict = Depends(get_current_owner)):
     current_user_id = UUID(current_owner_data["user"]["user_id"])
-    
     prop = await db.get(Property, property_id)
-    
     if not prop:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
-        
     if prop.user_id != current_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to reserve this property")
-
     if prop.status != PropertyStatus.APPROVED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved properties can be reserved")
-        
+
     prop.status = PropertyStatus.RESERVED
     await db.commit()
     await db.refresh(prop)
-    
     return prop
 
 @router.patch("/{property_id}/unreserve", response_model=PropertyResponse)
-async def unreserve_property(
-    property_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_owner_data: dict = Depends(get_current_owner)
-):
-    """
-    Changes a property's status from 'RESERVED' back to 'APPROVED'.
-    """
+async def unreserve_property(property_id: UUID, db: AsyncSession = Depends(get_db), current_owner_data: dict = Depends(get_current_owner)):
     current_user_id = UUID(current_owner_data["user"]["user_id"])
-    
     prop = await db.get(Property, property_id)
-    
     if not prop:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
-        
     if prop.user_id != current_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to unreserve this property")
-
     if prop.status != PropertyStatus.RESERVED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only reserved properties can be unreserved")
-        
+
     prop.status = PropertyStatus.APPROVED
     await db.commit()
     await db.refresh(prop)
-    
     return prop
 
+# ----------------- Approve and Initiate Payment -----------------
 @router.patch("/{property_id}/approve-and-pay", response_model=PaymentInitiationResponse)
-async def approve_and_pay(
-    property_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_owner_data: dict = Depends(get_current_owner)
-):
-    """
-    Approves a PENDING property and initiates its payment process.
-    """
+async def approve_and_pay(property_id: UUID, db: AsyncSession = Depends(get_db), current_owner_data: dict = Depends(get_current_owner)):
     current_user = current_owner_data["user"]
     access_token = current_owner_data["token"]
 
     prop = await db.get(Property, property_id)
-
     if not prop:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
-    
     if prop.user_id != UUID(current_user['user_id']):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to approve this property")
-
     if prop.status != PropertyStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending properties can be approved for payment.")
-    
     if prop.payment_status != PaymentStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment process already initiated or completed for this property.")
 
     try:
-        # Initiate payment with the payment service
         request_id, payment_id, chapa_tx_ref, checkout_url = await initiate_payment(
             property_id=prop.id,
             user_id=current_user['user_id'],
             access_token=access_token
         )
-        
-        # Store the payment_id and commit
         prop.payment_id = payment_id
-        # The payment_status will be updated by the webhook after actual payment confirmation
         await db.commit()
         await db.refresh(prop)
 
@@ -307,7 +266,7 @@ async def approve_and_pay(
 
     return {
         "property_id": prop.id,
-        "status": prop.status.value, # Property status remains PENDING until payment is confirmed by webhook
+        "status": prop.status.value,
         "payment_id": payment_id,
         "chapa_tx_ref": chapa_tx_ref,
         "checkout_url": checkout_url
