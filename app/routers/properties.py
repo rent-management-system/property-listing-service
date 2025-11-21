@@ -7,7 +7,7 @@ from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse # Added PaymentStatusEnum
+    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse, MetricsResponse # Added PaymentStatusEnum and MetricsResponse
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
@@ -24,18 +24,24 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
-@router.get("/metrics")
+@router.get("/metrics", response_model=MetricsResponse)
 async def get_metrics(db: AsyncSession = Depends(get_db)):
     logger.info("metrics_accessed", endpoint="metrics", service="property")
     total_listings = await db.scalar(select(func.count(Property.id)))
     pending = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.PENDING))
     approved = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.APPROVED))
     rejected = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.REJECTED))
+    total_revenue = await db.scalar(
+        select(func.coalesce(func.sum(Property.price), 0)).where(
+            Property.payment_status.in_([PaymentStatus.SUCCESS, PaymentStatus.PAID])
+        )
+    )
     return {
         "total_listings": total_listings,
         "pending": pending,
         "approved": approved,
-        "rejected": rejected
+        "rejected": rejected,
+        "total_revenue": total_revenue
     }
 
 @router.post("/submit", status_code=status.HTTP_201_CREATED, response_model=PropertySubmitResponse)

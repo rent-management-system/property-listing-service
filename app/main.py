@@ -9,6 +9,12 @@ from app.config import settings
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler # Added import
 from app.services.property_cleanup import cleanup_stale_pending_properties # Added import
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+from app.dependencies.database import get_db
+from app.models.property import Property, PropertyStatus, PaymentStatus
+from app.schemas.property import MetricsResponse
+from decimal import Decimal
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -73,3 +79,24 @@ app.include_router(
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def service_metrics(db: AsyncSession = Depends(get_db)):
+    """Top-level service metrics for listing counts."""
+    total_listings = await db.scalar(select(func.count(Property.id)))
+    pending = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.PENDING))
+    approved = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.APPROVED))
+    rejected = await db.scalar(select(func.count(Property.id)).where(Property.status == PropertyStatus.REJECTED))
+    total_revenue = await db.scalar(
+        select(func.coalesce(func.sum(Property.price), 0)).where(
+            Property.payment_status.in_([PaymentStatus.SUCCESS, PaymentStatus.PAID])
+        )
+    )
+    return MetricsResponse(
+        total_listings=total_listings or 0,
+        pending=pending or 0,
+        approved=approved or 0,
+        rejected=rejected or 0,
+        total_revenue=total_revenue if total_revenue is not None else Decimal("0")
+    )

@@ -98,3 +98,11 @@ class PropertyUpdate(BaseModel):
     bedrooms: Optional[int] = None
     bathrooms: Optional[int] = None
     area_sqm: Optional[float] = None
+
+class MetricsResponse(BaseModel):
+    """Response model for listing metrics counts."""
+    total_listings: int
+    pending: int
+    approved: int
+    rejected: int
+    total_revenue: Decimal
