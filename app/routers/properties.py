@@ -7,7 +7,7 @@ from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse, MetricsResponse # Added PaymentStatusEnum and MetricsResponse
+    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse, MetricsResponse, PropertyListResponse # Added PaymentStatusEnum and MetricsResponse
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
@@ -137,6 +137,70 @@ async def get_all_properties(
     offset: int = 0,
     limit: int = 20
 ):
+    query = select(Property).where(Property.status == PropertyStatus.APPROVED)
+
+    if search and db.bind.dialect.name != "sqlite":
+        query = query.where(text("to_tsvector('english', title || ' ' || description) @@ to_tsquery('english', :search_query)").bindparams(search_query=search))
+    if location:
+        query = query.where(Property.location.ilike(f"%{location}%"))
+    if min_price:
+        query = query.where(Property.price >= min_price)
+    if max_price:
+        query = query.where(Property.price <= max_price)
+    if amenities:
+        # Ensure amenities are treated as an array in the query
+        query = query.where(Property.amenities.op('&&')(amenities))
+
+    # Compute total count without pagination
+    count_query = select(func.count(Property.id)).where(Property.status == PropertyStatus.APPROVED)
+    if search and db.bind.dialect.name != "sqlite":
+        count_query = count_query.where(text("to_tsvector('english', title || ' ' || description) @@ to_tsquery('english', :search_query)").bindparams(search_query=search))
+    if location:
+        count_query = count_query.where(Property.location.ilike(f"%{location}%"))
+    if min_price:
+        count_query = count_query.where(Property.price >= min_price)
+    if max_price:
+        count_query = count_query.where(Property.price <= max_price)
+    if amenities:
+        count_query = count_query.where(Property.amenities.op('&&')(amenities))
+
+    total = await db.scalar(count_query)
+
+    # Fetch paginated items
+    query = query.offset(offset).limit(limit)
+    result = await db.execute(query)
+    items = result.scalars().all()
+    return {"total": total or 0, "items": items}
+
+@router.get("/public/{id}", response_model=PropertyResponse)
+async def get_property_public(
+    id: UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Public, non-auth endpoint to fetch a single approved property by id.
+    Returns 404 if the property does not exist or is not APPROVED.
+    """
+    prop = await db.get(Property, id)
+    if not prop or prop.status != PropertyStatus.APPROVED:
+        raise HTTPException(status_code=404, detail="Property not found")
+    return prop
+
+@router.get("/public", response_model=PropertyListResponse)
+async def get_all_properties_public(
+    db: AsyncSession = Depends(get_db),
+    location: Optional[str] = None,
+    min_price: Optional[Decimal] = None,
+    max_price: Optional[Decimal] = None,
+    amenities: Optional[List[str]] = Query(None),
+    search: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 20
+):
+    """
+    Public, non-auth endpoint to list approved properties with full details.
+    Supports basic filters and pagination. Only returns APPROVED listings.
+    """
     query = select(Property).where(Property.status == PropertyStatus.APPROVED)
 
     if search and db.bind.dialect.name != "sqlite":

@@ -106,3 +106,8 @@ class MetricsResponse(BaseModel):
     approved: int
     rejected: int
     total_revenue: Decimal
+
+class PropertyListResponse(BaseModel):
+    """Paginated list response with total count for public detailed listings."""
+    total: int
+    items: List[PropertyResponse]
