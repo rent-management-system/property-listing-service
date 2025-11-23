@@ -7,10 +7,11 @@ from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse, MetricsResponse, PropertyListResponse # Added PaymentStatusEnum and MetricsResponse
+    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse, MetricsResponse, PropertyListResponse, PropertyOwnerContactResponse # Added PropertyOwnerContactResponse
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
+from app.services.user_service import get_user_by_id
 from uuid import UUID
 from typing import List, Optional
 from decimal import Decimal
@@ -388,3 +389,65 @@ async def approve_and_pay(
         "chapa_tx_ref": chapa_tx_ref,
         "checkout_url": checkout_url
     }
+
+@router.get("/{property_id}/owner-contact", response_model=PropertyOwnerContactResponse)
+async def get_property_owner_contact(
+    property_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Retrieves the property owner's contact information for a given property ID.
+    This endpoint allows authenticated users to get owner contact details including
+    name, email, phone number, and other contact information.
+    
+    Args:
+        property_id: The UUID of the property
+        db: Database session
+        current_user: Currently authenticated user
+        
+    Returns:
+        PropertyOwnerContactResponse with owner contact details
+    """
+    # Fetch the property
+    prop = await db.get(Property, property_id)
+    
+    if not prop:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Property not found"
+        )
+    
+    # Only allow access to approved properties for contact information
+    if prop.status != PropertyStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Contact information is only available for approved properties"
+        )
+    
+    try:
+        # Fetch owner details from User Management Service
+        owner_data = await get_user_by_id(str(prop.user_id))
+        
+        # Extract contact information
+        return PropertyOwnerContactResponse(
+            property_id=prop.id,
+            owner_id=prop.user_id,
+            owner_name=owner_data.get("full_name", owner_data.get("name", "N/A")),
+            owner_email=owner_data.get("email", "N/A"),
+            owner_phone=owner_data.get("phone_number", owner_data.get("phone")),
+            property_title=prop.title,
+            property_location=prop.location
+        )
+        
+    except Exception as e:
+        logger.error(
+            "Failed to fetch owner contact information",
+            property_id=str(property_id),
+            owner_id=str(prop.user_id),
+            error=str(e)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to retrieve owner contact information at this time"
+        )

@@ -381,6 +381,64 @@ curl -X PATCH "https://property-listing-service.onrender.com/api/v1/properties/Y
 }
 ```
 
+### Get Property Owner Contact Information
+
+Retrieves the contact information of the property owner for a given property ID. This endpoint allows authenticated users to get owner details including name, email, phone number, and other contact information. Only available for approved properties.
+
+-   **Method:** `GET`
+-   **Path:** `/properties/{property_id}/owner-contact`
+-   **Permissions:** Authenticated User (any role)
+
+#### Path Parameters
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `property_id` | `uuid` | The unique ID of the property. |
+
+#### Example Request
+
+```bash
+curl -X GET "https://property-listing-service.onrender.com/api/v1/properties/YOUR_PROPERTY_ID/owner-contact" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### Success Response (200 OK)
+
+```json
+{
+  "property_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+  "owner_id": "b2c3d4e5-f6a7-8901-2345-67890abcdef1",
+  "owner_name": "John Doe",
+  "owner_email": "john.doe@example.com",
+  "owner_phone": "+251911234567",
+  "property_title": "Cozy Downtown Apartment",
+  "property_location": "Addis Ababa"
+}
+```
+
+#### Error Responses
+
+**404 Not Found** - Property does not exist
+```json
+{
+  "detail": "Property not found"
+}
+```
+
+**403 Forbidden** - Property is not approved
+```json
+{
+  "detail": "Contact information is only available for approved properties"
+}
+```
+
+**503 Service Unavailable** - Unable to fetch owner information
+```json
+{
+  "detail": "Unable to retrieve owner contact information at this time"
+}
+```
+
 ---
 
 ## 4. Service-to-Service Endpoints

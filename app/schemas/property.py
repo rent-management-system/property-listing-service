@@ -111,3 +111,16 @@ class PropertyListResponse(BaseModel):
     """Paginated list response with total count for public detailed listings."""
     total: int
     items: List[PropertyPublicResponse]
+
+class PropertyOwnerContactResponse(BaseModel):
+    """Response model for property owner contact information."""
+    property_id: UUID4
+    owner_id: UUID4
+    owner_name: str
+    owner_email: str
+    owner_phone: Optional[str] = None
+    property_title: str
+    property_location: str
+    
+    class Config:
+        from_attributes = True
