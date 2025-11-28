@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
 # import shutil # Removed shutil
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -362,71 +363,84 @@ async def approve_and_pay(
     if prop.payment_status != PaymentStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment process already initiated or completed for this property.")
 
-    try:
-        # Initiate payment with the payment service
-        request_id, payment_id, chapa_tx_ref, checkout_url = await initiate_payment(
-            property_id=prop.id,
-            user_id=current_user['user_id'],
-            access_token=access_token
-        )
-        
-        # Store the payment_id and commit
-        prop.payment_id = payment_id
-        # The payment_status will be updated by the webhook after actual payment confirmation
-        await db.commit()
-        await db.refresh(prop)
+    max_retries = 3
+    backoff_factor = 1  # seconds
 
-    except httpx.HTTPStatusError as e:
-        # This occurs when the payment service returns a 4xx or 5xx error.
-        error_detail = f"Payment service returned an error: {e.response.status_code}"
+    for attempt in range(max_retries + 1):
         try:
-            # Try to get a more specific error message from the payment service's response
-            error_detail = e.response.json().get("detail", error_detail)
-        except Exception:
-            pass # Keep the generic error if response is not JSON or doesn't have "detail"
-
-        logger.error(
-            "HTTP status error while initiating payment",
-            property_id=str(prop.id),
-            status_code=e.response.status_code,
-            error_detail=error_detail
-        )
-        
-        if 400 <= e.response.status_code < 500:
-            # Client-side error (e.g., bad data, invalid token)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to initiate payment: {error_detail}",
+            # Initiate payment with the payment service
+            request_id, payment_id, chapa_tx_ref, checkout_url = await initiate_payment(
+                property_id=prop.id,
+                user_id=current_user['user_id'],
+                access_token=access_token
             )
-        else:
-            # Server-side error on the payment service
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="The payment service reported an internal error.",
+            
+            # Store the payment_id and commit
+            prop.payment_id = payment_id
+            # The payment_status will be updated by the webhook after actual payment confirmation
+            await db.commit()
+            await db.refresh(prop)
+            break  # Break out of the retry loop if successful
+
+        except httpx.HTTPStatusError as e:
+            error_detail = f"Payment service returned an error: {e.response.status_code}"
+            try:
+                error_detail = e.response.json().get("detail", error_detail)
+            except Exception:
+                pass
+
+            logger.error(
+                "HTTP status error while initiating payment",
+                property_id=str(prop.id),
+                status_code=e.response.status_code,
+                error_detail=error_detail,
+                attempt=attempt + 1,
+                max_retries=max_retries
             )
 
-    except httpx.RequestError as e:
-        # This occurs on network errors (e.g., DNS failure, refused connection, timeout).
-        logger.error("Network error while initiating payment", property_id=str(prop.id), error_message=str(e))
+            if e.response.status_code == 429 and attempt < max_retries:
+                sleep_time = backoff_factor * (2 ** attempt)
+                logger.warning(
+                    "Payment service rate limit hit, retrying...",
+                    property_id=str(prop.id),
+                    sleep_time=sleep_time,
+                    attempt=attempt + 1
+                )
+                await asyncio.sleep(sleep_time)
+            elif 400 <= e.response.status_code < 500:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to initiate payment: {error_detail}",
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="The payment service reported an internal error.",
+                )
+        except httpx.RequestError as e:
+            logger.error("Network error while initiating payment", property_id=str(prop.id), error_message=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not connect to the payment service. Please try again later.",
+            )
+        except (ValueError, TypeError) as e:
+            logger.error("Invalid response format from payment service", property_id=str(prop.id), error_message=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Received an invalid or unexpected response from the payment service.",
+            )
+        except Exception as e:
+            logger.error("An unexpected error occurred during payment initiation", property_id=str(prop.id), error_message=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An internal error occurred. Please try again later.",
+            )
+    else:
+        # This else block is executed if the loop completes without a 'break'
+        # meaning all retries failed for a 429 error.
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not connect to the payment service. Please try again later.",
-        )
-
-    except (ValueError, TypeError) as e:
-        # This can happen if the payment service returns an invalid UUID or unexpected data format.
-        logger.error("Invalid response format from payment service", property_id=str(prop.id), error_message=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Received an invalid or unexpected response from the payment service.",
-        )
-
-    except Exception as e:
-        # Catch any other unexpected errors.
-        logger.error("An unexpected error occurred during payment initiation", property_id=str(prop.id), error_message=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred. Please try again later.",
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Failed to initiate payment after multiple retries due to rate limiting. Please try again later."
         )
 
     return {
