@@ -5,11 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 import httpx
 from app.dependencies.database import get_db
-from app.dependencies.auth import get_current_owner, get_current_user
+from app.dependencies.auth import get_current_owner, get_current_user, oauth2_scheme
 from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
 from app.schemas.property import (
     PropertySubmit, PropertySubmitResponse, 
-    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, PaymentInitiationResponse, MetricsResponse, PropertyListResponse, PropertyOwnerContactResponse # Added PropertyOwnerContactResponse
+    PropertyResponse, PropertyPublicResponse, HouseType, PaymentStatusEnum, PropertyUpdate, 
+    PaymentInitiationResponse, MetricsResponse, PropertyListResponse, PropertyOwnerContactResponse
 )
 from app.services.gebeta import geocode_location_with_fallback
 from app.services.payment_service import initiate_payment
@@ -174,6 +175,41 @@ async def get_all_properties(
     result = await db.execute(query)
     items = result.scalars().all()
     return {"total": total or 0, "items": items}
+
+@router.get("/reserved", response_model=PropertyListResponse, include_in_schema=True)
+async def get_reserved_properties(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieves all reserved properties with total count.
+    This endpoint is publicly accessible.
+    """
+    try:
+        # Get total count of reserved properties
+        total = await db.scalar(
+            select(func.count(Property.id))
+            .where(Property.status == PropertyStatus.RESERVED)
+        )
+        
+        # Get all reserved properties
+        result = await db.execute(
+            select(Property)
+            .where(Property.status == PropertyStatus.RESERVED)
+            .order_by(Property.created_at.desc())
+        )
+        items = result.scalars().all()
+        
+        return {
+            "total": total or 0,
+            "items": items
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching reserved properties: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error fetching reserved properties"
+        )
 
 @router.get("/public/{id}", response_model=PropertyResponse)
 async def get_property_public(

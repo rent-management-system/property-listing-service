@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware # Added import
 from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.dependencies.database import get_db
 from app.models.property import Property, PropertyStatus, PaymentStatus
-from app.schemas.property import MetricsResponse
+from app.schemas.property import MetricsResponse, PropertyListResponse
 from decimal import Decimal
+from typing import List
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -63,11 +64,45 @@ async def log_requests(request: Request, call_next):
     logger.info("Request completed", status_code=response.status_code)
     return response
 
+# Create a separate router for public endpoints
+public_router = APIRouter()
+
+# Public endpoint for reserved properties
+@public_router.get("/properties/reserved", response_model=PropertyListResponse, include_in_schema=True)
+async def get_reserved_properties(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieves all reserved properties with total count.
+    This endpoint is publicly accessible.
+    """
+    # Get total count of reserved properties
+    total = await db.scalar(
+        select(func.count(Property.id))
+        .where(Property.status == PropertyStatus.RESERVED)
+    )
+    
+    # Get all reserved properties
+    result = await db.execute(
+        select(Property)
+        .where(Property.status == PropertyStatus.RESERVED)
+        .order_by(Property.created_at.desc())
+    )
+    items = result.scalars().all()
+    
+    return {
+        "total": total or 0,
+        "items": items
+    }
+
+# Include the public router first (no prefix to avoid /api/v1/api/v1)
+app.include_router(public_router, prefix="/api/v1", tags=["Public"])
+
+# Include the main properties router with authentication
 app.include_router(
     properties.router, 
     prefix="/api/v1/properties", 
-    tags=["Properties"],
-    dependencies=[Depends(RateLimiter(times=10, minutes=1))]
+    tags=["Properties"]
 )
 
 app.include_router(
