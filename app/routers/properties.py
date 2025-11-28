@@ -398,25 +398,49 @@ async def approve_and_pay(
                 max_retries=max_retries
             )
 
-            if e.response.status_code == 429 and attempt < max_retries:
-                sleep_time = backoff_factor * (2 ** attempt)
-                logger.warning(
-                    "Payment service rate limit hit, retrying...",
-                    property_id=str(prop.id),
-                    sleep_time=sleep_time,
-                    attempt=attempt + 1
-                )
-                await asyncio.sleep(sleep_time)
-            elif 400 <= e.response.status_code < 500:
+            if e.response.status_code == 429:
+                if attempt < max_retries:
+                    # Get retry-after header if available, otherwise use exponential backoff
+                    retry_after = e.response.headers.get("retry-after")
+                    if retry_after and retry_after.isdigit():
+                        sleep_time = float(retry_after)
+                    else:
+                        sleep_time = backoff_factor * (2 ** attempt)
+                    
+                    logger.warning(
+                        "Payment service rate limit hit, retrying...",
+                        property_id=str(prop.id),
+                        sleep_time=sleep_time,
+                        attempt=attempt + 1,
+                        max_retries=max_retries
+                    )
+                    await asyncio.sleep(sleep_time)
+                    continue  # Continue to next retry attempt
+                else:
+                    # If we've exhausted all retries, return a 429 with appropriate detail
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail=(
+                            "Payment service is currently experiencing high load. "
+                            f"Please try again in {int(backoff_factor * 2 ** attempt)} seconds."
+                        )
+                    )
+            
+            # For other 4xx errors, return the original status code and message
+            if 400 <= e.response.status_code < 500:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to initiate payment: {error_detail}",
+                    status_code=e.response.status_code,
+                    detail=error_detail or "Bad request to payment service"
                 )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="The payment service reported an internal error.",
+            
+            # For 5xx errors, return a 502 Bad Gateway
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "The payment service is currently unavailable. "
+                    "Please try again later."
                 )
+            )
         except httpx.RequestError as e:
             logger.error("Network error while initiating payment", property_id=str(prop.id), error_message=str(e))
             raise HTTPException(
