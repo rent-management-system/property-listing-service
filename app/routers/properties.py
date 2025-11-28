@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, File, Uplo
 # import shutil # Removed shutil
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+import httpx
 from app.dependencies.database import get_db
 from app.dependencies.auth import get_current_owner, get_current_user
 from app.models.property import Property, PropertyStatus, PaymentStatus # Added PaymentStatus
@@ -375,11 +376,57 @@ async def approve_and_pay(
         await db.commit()
         await db.refresh(prop)
 
-    except Exception as e:
-        logger.error("Failed to initiate payment for approval", property_id=str(prop.id), error_message=str(e))
+    except httpx.HTTPStatusError as e:
+        # This occurs when the payment service returns a 4xx or 5xx error.
+        error_detail = f"Payment service returned an error: {e.response.status_code}"
+        try:
+            # Try to get a more specific error message from the payment service's response
+            error_detail = e.response.json().get("detail", error_detail)
+        except Exception:
+            pass # Keep the generic error if response is not JSON or doesn't have "detail"
+
+        logger.error(
+            "HTTP status error while initiating payment",
+            property_id=str(prop.id),
+            status_code=e.response.status_code,
+            error_detail=error_detail
+        )
+        
+        if 400 <= e.response.status_code < 500:
+            # Client-side error (e.g., bad data, invalid token)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to initiate payment: {error_detail}",
+            )
+        else:
+            # Server-side error on the payment service
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The payment service reported an internal error.",
+            )
+
+    except httpx.RequestError as e:
+        # This occurs on network errors (e.g., DNS failure, refused connection, timeout).
+        logger.error("Network error while initiating payment", property_id=str(prop.id), error_message=str(e))
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Payment service is currently unavailable. Please try again later.",
+            detail="Could not connect to the payment service. Please try again later.",
+        )
+
+    except (ValueError, TypeError) as e:
+        # This can happen if the payment service returns an invalid UUID or unexpected data format.
+        logger.error("Invalid response format from payment service", property_id=str(prop.id), error_message=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Received an invalid or unexpected response from the payment service.",
+        )
+
+    except Exception as e:
+        # Catch any other unexpected errors.
+        logger.error("An unexpected error occurred during payment initiation", property_id=str(prop.id), error_message=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred. Please try again later.",
         )
 
     return {

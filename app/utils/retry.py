@@ -16,7 +16,8 @@ def async_retry(attempts=5, backoff_factor=0.5): # Increased attempts to 5
                         f"Attempt {attempt} failed for {func.__name__}",
                         attempt=attempt,
                         function=func.__name__,
-                        error=str(e),
+                        error_message=str(e),
+                        error_type=type(e).__name__,
                         exc_info=True if attempt == attempts else False # Log traceback only on final attempt
                     )
                     if attempt == attempts:
